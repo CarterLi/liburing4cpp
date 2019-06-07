@@ -1,8 +1,10 @@
 #include "global.hpp"
 
+#if !USE_LIBAIO
 io_uring ring;
-
-std::vector<std::array<char, BUF_SIZE>> uring_buffers;
+#else
+io_context_t context;
+#endif
 
 const std::unordered_map<std::string_view, std::string_view> MimeDicts = {
     { "123", "application/vnd.lotus-1-2-3" },

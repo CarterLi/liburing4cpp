@@ -1,7 +1,11 @@
 #pragma once
 #include <functional>
 #include <sys/timerfd.h>
-#include <liburing.h>   // http://git.kernel.dk/liburing
+#if !USE_LIBAIO
+#   include <liburing.h>   // http://git.kernel.dk/liburing
+#else
+#   include <libaio.h>     // http://git.infradead.org/users/hch/libaio.git
+#endif
 #include <fmt/format.h> // https://github.com/fmtlib/fmt
 
 #include "yield.hpp"
@@ -65,7 +69,8 @@ public:
 public:
 
 // 异步读操作，不使用缓冲区
-#define DEFINE_URING_OP(operation) \
+#if !USE_LIBAIO
+#define DEFINE_AWAIT_OP(operation) \
 template <unsigned int N> \
 int await_##operation (int fd, iovec (&&ioves) [N], off_t offset = 0) { \
     auto* sqe = io_uring_get_sqe(&ring); \
@@ -78,46 +83,37 @@ int await_##operation (int fd, iovec (&&ioves) [N], off_t offset = 0) { \
     if (res < 0) panic(#operation, -res); \
     return res; \
 }
-    DEFINE_URING_OP(readv)
-    DEFINE_URING_OP(writev)
-#undef DEFINE_URING_OP
-
-// 异步读操作，使用缓冲区
-#define DEFINE_URING_FIXED_OP(operation) \
-int await_##operation##_fixed (pool_ptr_t ppool, int fd, size_t nbyte = 0, off_t offset = 0) { \
-    auto* sqe = io_uring_get_sqe(&ring); \
-    assert(sqe && "sqe should not be NULL"); \
-    if (!nbyte) nbyte = ppool->size(); \
-    io_uring_prep_##operation##_fixed (sqe, fd, ppool, uint32_t(nbyte), offset); \
-    sqe->buf_index = uint16_t(ppool - uring_buffers.data()); \
-    io_uring_sqe_set_data(sqe, this); \
-    io_uring_submit_and_wait(&ring, 1); \
+#else
+#define DEFINE_AWAIT_OP(operation) \
+template <unsigned int N> \
+int await_##operation (int fd, iovec (&&ioves) [N], off_t offset = 0) { \
+    iocb ioq, *pioq = &ioq; \
+    io_prep_p##operation(&ioq, fd, ioves, N, offset); \
+    ioq.data = this; \
+    io_submit(context, 1, &pioq); \
     this->yield(); \
     int res = this->current().value(); \
-    if (res < 0) panic(#operation "_fixed", -res); \
+    if (res < 0) panic(#operation, -res); \
     return res; \
 }
-    DEFINE_URING_FIXED_OP(read)
-    DEFINE_URING_FIXED_OP(write)
-#undef DEFINE_URING_FIXED_OP
+#endif
+    DEFINE_AWAIT_OP(readv)
+    DEFINE_AWAIT_OP(writev)
+#undef DEFINE_AWAIT_OP
 
     int await_poll(int fd) {
+#if !USE_LIBAIO
         auto* sqe = io_uring_get_sqe(&ring);
         assert(sqe && "sqe should not be NULL");
         io_uring_prep_poll_add(sqe, fd, POLL_IN);
         io_uring_sqe_set_data(sqe, this);
         io_uring_submit_and_wait(&ring, 1);
-        this->yield();
-        int res = this->current().value();
-        if (res < 0) panic("poll", -res);
-        return res;
-    }
-
-    int await_cancel_pool() {
-        auto* sqe = io_uring_get_sqe(&ring);
-        assert(sqe && "sqe should not be NULL");
-        io_uring_prep_poll_remove(sqe, this);
-        io_uring_submit_and_wait(&ring, 1);
+#else
+        iocb ioq, *pioq = &ioq;
+        io_prep_poll(&ioq, fd, 1);
+        ioq.data = this;
+        io_submit(context, 1, &pioq);
+#endif
         this->yield();
         int res = this->current().value();
         if (res < 0) panic("poll", -res);
@@ -126,11 +122,19 @@ int await_##operation##_fixed (pool_ptr_t ppool, int fd, size_t nbyte = 0, off_t
 
     // 把控制权交给其他协程
     int yield_execution() {
+#if !USE_LIBAIO
         auto* sqe = io_uring_get_sqe(&ring);
         assert(sqe && "sqe should not be NULL");
         io_uring_prep_nop(sqe);
         io_uring_sqe_set_data(sqe, this);
         io_uring_submit_and_wait(&ring, 1);
+#else
+        iocb ioq, *pioq = &ioq;
+        memset(&ioq, 0, sizeof(ioq));
+        ioq.aio_lio_opcode = IO_CMD_NOOP;
+        ioq.data = this;
+        io_submit(context, 1, &pioq);
+#endif
         this->yield();
         return this->current().value();
     }
