@@ -433,9 +433,9 @@ namespace FiberSpace {
                 catch (FiberReturn &) {
                     // 主 Fiber 对象正在析构
                 }
-//                catch (...) {
-//                    fiber->eptr = std::current_exception();
-//                }
+                catch (...) {
+                    fiber->eptr = std::current_exception();
+                }
             }
             fiber->status = FiberStatus::closed;
 #if USE_FCONTEXT

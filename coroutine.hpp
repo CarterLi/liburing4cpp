@@ -32,6 +32,9 @@ private:
 void panic(std::string_view sv, int err = 0) { // 简单起见，把错误直接转化成异常抛出，终止程序
     if (err == 0) err = errno;
     fmt::print(stderr, "errno: {}\n", err);
+    if (err == EPIPE) {
+        throw std::runtime_error("Broken pipe: client socket is closed");
+    }
     throw std::system_error(err, std::generic_category(), sv.data());
 }
 
@@ -69,7 +72,7 @@ int await_##operation (int fd, iovec (&&ioves) [N], off_t offset = 0) { \
     assert(sqe && "sqe should not be NULL"); \
     io_uring_prep_##operation (sqe, fd, ioves, N, offset); \
     io_uring_sqe_set_data(sqe, this); \
-    io_uring_submit(&ring); \
+    io_uring_submit_and_wait(&ring, 1); \
     this->yield(); \
     int res = this->current().value(); \
     if (res < 0) panic(#operation, -res); \
@@ -88,7 +91,7 @@ int await_##operation##_fixed (pool_ptr_t ppool, int fd, size_t nbyte = 0, off_t
     io_uring_prep_##operation##_fixed (sqe, fd, ppool, uint32_t(nbyte), offset); \
     sqe->buf_index = uint16_t(ppool - uring_buffers.data()); \
     io_uring_sqe_set_data(sqe, this); \
-    io_uring_submit(&ring); \
+    io_uring_submit_and_wait(&ring, 1); \
     this->yield(); \
     int res = this->current().value(); \
     if (res < 0) panic(#operation "_fixed", -res); \
@@ -103,7 +106,7 @@ int await_##operation##_fixed (pool_ptr_t ppool, int fd, size_t nbyte = 0, off_t
         assert(sqe && "sqe should not be NULL");
         io_uring_prep_poll_add(sqe, fd, POLL_IN);
         io_uring_sqe_set_data(sqe, this);
-        io_uring_submit(&ring);
+        io_uring_submit_and_wait(&ring, 1);
         this->yield();
         int res = this->current().value();
         if (res < 0) panic("poll", -res);
@@ -114,7 +117,7 @@ int await_##operation##_fixed (pool_ptr_t ppool, int fd, size_t nbyte = 0, off_t
         auto* sqe = io_uring_get_sqe(&ring);
         assert(sqe && "sqe should not be NULL");
         io_uring_prep_poll_remove(sqe, this);
-        io_uring_submit(&ring);
+        io_uring_submit_and_wait(&ring, 1);
         this->yield();
         int res = this->current().value();
         if (res < 0) panic("poll", -res);
@@ -127,7 +130,7 @@ int await_##operation##_fixed (pool_ptr_t ppool, int fd, size_t nbyte = 0, off_t
         assert(sqe && "sqe should not be NULL");
         io_uring_prep_nop(sqe);
         io_uring_sqe_set_data(sqe, this);
-        io_uring_submit(&ring);
+        io_uring_submit_and_wait(&ring, 1);
         this->yield();
         return this->current().value();
     }

@@ -221,6 +221,11 @@ int main(int argc, char* argv[]) {
         // 有已完成的事件，回到协程继续
         auto* coro = static_cast<Coroutine *>(io_uring_cqe_get_data(cqe));
         io_uring_cqe_seen(&ring, cqe);
-        if (!coro->next(cqe->res)) delete coro;
+        try {
+            if (!coro->next(cqe->res)) delete coro;
+        } catch (std::runtime_error& e) {
+            fmt::print("{}\n", e.what());
+            delete coro;
+        }
     }
 }
