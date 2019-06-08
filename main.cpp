@@ -31,11 +31,7 @@ void http_send_file(Coroutine& coro, std::string filename, int clientfd, int dir
     if (filename == "./") filename = "./index.html";
 
     // 尝试打开待发送文件
-    const auto infd = openat(dirfd, filename.c_str(), O_RDONLY
-#if USE_LIBAIO
-        | O_DIRECT // Try to make it truly async
-#endif
-    );
+    const auto infd = openat(dirfd, filename.c_str(), O_RDONLY);
     on_scope_exit closefd([=]() { close(infd); });
 
     if (struct stat st; infd < 0 || fstat(infd, &st) || !S_ISREG(st.st_mode)) {
