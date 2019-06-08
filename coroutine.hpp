@@ -6,6 +6,7 @@
 #else
 #   include <libaio.h>     // http://git.infradead.org/users/hch/libaio.git
 #endif
+#include <sys/poll.h>
 #include <fmt/format.h> // https://github.com/fmtlib/fmt
 
 #include "yield.hpp"
@@ -105,12 +106,12 @@ int await_##operation (int fd, iovec (&&ioves) [N], off_t offset = 0) { \
 #if !USE_LIBAIO
         auto* sqe = io_uring_get_sqe(&ring);
         assert(sqe && "sqe should not be NULL");
-        io_uring_prep_poll_add(sqe, fd, POLL_IN);
+        io_uring_prep_poll_add(sqe, fd, POLLIN);
         io_uring_sqe_set_data(sqe, this);
         io_uring_submit_and_wait(&ring, 1);
 #else
         iocb ioq, *pioq = &ioq;
-        io_prep_poll(&ioq, fd, 1);
+        io_prep_poll(&ioq, fd, POLLIN);
         ioq.data = this;
         io_submit(context, 1, &pioq);
 #endif
