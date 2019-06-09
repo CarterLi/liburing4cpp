@@ -171,18 +171,29 @@ public:
         return { coro, res };
     }
 
-    static std::optional<std::pair<Coroutine *, int>> timedwait_for_event(timespec timeout) {
+    static std::optional<std::pair<Coroutine *, int>> peek_a_event() {
 #if !USE_LIBAIO
-        // io_uring doesn't support timed wait (yet), simulate it by polling a timer
         io_uring_cqe* cqe;
-
-        // First clear all cqes, to make sure there's no timer-poll completion event in queue
         while (io_uring_peek_cqe(&ring, &cqe) >= 0 && cqe) {
             io_uring_cqe_seen(&ring, cqe);
 
             if (auto* coro = static_cast<Coroutine *>(io_uring_cqe_get_data(cqe))) {
                 return std::make_pair(coro, cqe->res);
             }
+        }
+        return std::nullopt;
+#else
+        return timedwait_for_event({0, 0});
+#endif
+    }
+
+    static std::optional<std::pair<Coroutine *, int>> timedwait_for_event(timespec timeout) {
+#if !USE_LIBAIO
+        // io_uring doesn't support timed wait (yet), simulate it by polling a timer
+
+        // First clear all cqes, to make sure there's no timer-poll completion event in queue
+        if (auto result = Coroutine::peek_a_event()) {
+            return result;
         }
 
         itimerspec exp = { {}, timeout }, old;
@@ -199,6 +210,7 @@ public:
             if (io_uring_submit_and_wait(&ring, 1) < 0) panic("io_uring_submit_and_wait");
         }
 
+        io_uring_cqe* cqe;
         if (io_uring_wait_cqe(&ring, &cqe) < 0) panic("io_uring_wait_cqe");
         io_uring_cqe_seen(&ring, cqe);
 
