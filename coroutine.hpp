@@ -201,9 +201,9 @@ public:
 
         if (timerfd_settime(tfd, 0, &exp, &old)) panic("timerfd");
 
-        // See if we can reuse the old timer-poll event
+        // See if we can reuse the existing timer-poll request
         if (old.it_value.tv_sec == 0 && old.it_value.tv_nsec == 0) {
-            // The old timer has expired, poll another timer
+            // The old timer has expired, restart the poll request
             auto* sqe = io_uring_get_sqe(&ring);
             io_uring_prep_poll_add(sqe, tfd, POLLIN);
             // io_uring_sqe_set_data(sqe, nullptr);
@@ -215,7 +215,7 @@ public:
         io_uring_cqe_seen(&ring, cqe);
 
         if (auto* coro = static_cast<Coroutine *>(io_uring_cqe_get_data(cqe))) {
-            // We don't remove the running time-poll event, it will be handled in next call
+            // We don't cancel the running time-poll request, it will be handled in next call
             return std::make_pair(coro, cqe->res);
         } else {
             return std::nullopt;
