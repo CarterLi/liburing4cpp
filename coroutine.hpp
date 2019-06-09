@@ -68,21 +68,6 @@ public:
     }
 
 public:
-    enum class OperationEnum {
-        none,
-        noop,
-        readv,
-        writev,
-        poll_add,
-        poll_remove,
-
-#if !USE_LIBAIO
-        timeout_active,
-        timeout_inactive,
-#endif
-    };
-
-    using OperationData = std::pair<Coroutine *, OperationEnum>;
 
 // 异步读操作，不使用缓冲区
 #if !USE_LIBAIO
@@ -92,8 +77,7 @@ int await_##operation (int fd, iovec (&&ioves) [N], off_t offset = 0) { \
     auto* sqe = io_uring_get_sqe(&ring); \
     assert(sqe && "sqe should not be NULL"); \
     io_uring_prep_##operation (sqe, fd, ioves, N, offset); \
-    auto data = OperationData(this, OperationEnum::operation); \
-    io_uring_sqe_set_data(sqe, &data); \
+    io_uring_sqe_set_data(sqe, this); \
     io_uring_submit(&ring); \
     this->yield(); \
     int res = this->current().value(); \
@@ -106,8 +90,7 @@ template <unsigned int N> \
 int await_##operation (int fd, iovec (&&ioves) [N], off_t offset = 0) { \
     iocb ioq, *pioq = &ioq; \
     io_prep_p##operation(&ioq, fd, ioves, N, offset); \
-    auto data = OperationData(this, OperationEnum::operation); \
-    ioq.data = &data; \
+    ioq.data = this; \
     io_submit(context, 1, &pioq); \
     this->yield(); \
     int res = this->current().value(); \
@@ -120,17 +103,16 @@ int await_##operation (int fd, iovec (&&ioves) [N], off_t offset = 0) { \
 #undef DEFINE_AWAIT_OP
 
     int await_poll(int fd) {
-        auto data = OperationData(this, OperationEnum::poll_add);
 #if !USE_LIBAIO
         auto* sqe = io_uring_get_sqe(&ring);
         assert(sqe && "sqe should not be NULL");
         io_uring_prep_poll_add(sqe, fd, POLLIN);
-        io_uring_sqe_set_data(sqe, &data);
+        io_uring_sqe_set_data(sqe, this);
         io_uring_submit(&ring);
 #else
         iocb ioq, *pioq = &ioq;
         io_prep_poll(&ioq, fd, POLLIN);
-        ioq.data = &data;
+        ioq.data = this;
         io_submit(context, 1, &pioq);
 #endif
         this->yield();
@@ -141,18 +123,17 @@ int await_##operation (int fd, iovec (&&ioves) [N], off_t offset = 0) { \
 
     // 把控制权交给其他协程
     int yield_execution() {
-        auto data = OperationData(this, OperationEnum::noop);
 #if !USE_LIBAIO
         auto* sqe = io_uring_get_sqe(&ring);
         assert(sqe && "sqe should not be NULL");
         io_uring_prep_nop(sqe);
-        io_uring_sqe_set_data(sqe, &data);
+        io_uring_sqe_set_data(sqe, this);
         io_uring_submit(&ring);
 #else
         iocb ioq, *pioq = &ioq;
         memset(&ioq, 0, sizeof(ioq));
         ioq.aio_lio_opcode = IO_CMD_NOOP;
-        ioq.data = &data;
+        ioq.data = this;
         io_submit(context, 1, &pioq);
 #endif
         this->yield();
@@ -172,26 +153,19 @@ public:
         // 获取已完成的IO事件
 #if !USE_LIBAIO
         io_uring_cqe* cqe;
+        Coroutine *coro;
 
-    retry:
-        if (io_uring_wait_cqe(&ring, &cqe)) panic("wait_cqe");
-        io_uring_cqe_seen(&ring, cqe);
-
-        auto* pdata = static_cast<OperationData *>(io_uring_cqe_get_data(cqe));
-        auto [coro, op] = *static_cast<OperationData *>(io_uring_cqe_get_data(cqe));
-        if (!coro) {
-            assert(op == OperationEnum::timeout_inactive);
-            delete pdata; // pTimerData
-            goto retry;
-        }
+        do {
+            if (io_uring_wait_cqe(&ring, &cqe)) panic("wait_cqe");
+            io_uring_cqe_seen(&ring, cqe);
+        } while ((coro = static_cast<Coroutine *>(io_uring_cqe_get_data(cqe))));
 
         auto res = cqe->res;
 #else
         io_event event;
         io_getevents(context, 1, 1, &event, nullptr);
 
-        auto [coro, op] = *static_cast<OperationData *>(event.data);
-        assert(coro && "CORO should not be null since we don't need to remove polling operation");
+        auto* coro = static_cast<Coroutine *>(event.data);
         auto res = event.res;
 #endif
         return { coro, res };
@@ -199,55 +173,45 @@ public:
 
     static std::optional<std::pair<Coroutine *, int>> timedwait_for_event(timespec timeout) {
 #if !USE_LIBAIO
-        itimerspec exp = { {}, timeout };
-        // io_uring doesn't support timed wait (yet), set a timer to simulate it.
-        int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
-        on_scope_exit closefd([=]() { close(tfd); });
-        if (timerfd_settime(tfd, 0, &exp, nullptr)) panic("timerfd");
+        // io_uring doesn't support timed wait (yet), simulate it by polling a timer
+        io_uring_cqe* cqe;
 
-        // There should be only one active timer
-        auto pTimerData = new OperationData(nullptr, OperationEnum::timeout_active);
-        {
-            auto* sqe = io_uring_get_sqe(&ring);
-            io_uring_prep_poll_add(sqe, tfd, POLLIN);
-            io_uring_sqe_set_data(sqe, pTimerData);
+        // First clear all cqes, to make sure there's no timer-poll completion event in queue
+        while (io_uring_peek_cqe(&ring, &cqe) >= 0 && cqe) {
+            io_uring_cqe_seen(&ring, cqe);
+
+            if (auto* coro = static_cast<Coroutine *>(io_uring_cqe_get_data(cqe))) {
+                return std::make_pair(coro, cqe->res);
+            }
         }
 
-        if (io_uring_submit_and_wait(&ring, 1) < 0) panic("io_uring_submit_and_wait");
+        itimerspec exp = { {}, timeout }, old;
+        static const int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
 
-        io_uring_cqe *cqe;
+        if (timerfd_settime(tfd, 0, &exp, &old)) panic("timerfd");
 
-    retry:
-        if (io_uring_wait_cqe(&ring, &cqe) < 0) panic("io_uring_peek_cqe");
+        // See if we can reuse the old timer-poll event
+        if (old.it_value.tv_sec == 0 && old.it_value.tv_nsec == 0) {
+            // The old timer has expired, poll another timer
+            auto* sqe = io_uring_get_sqe(&ring);
+            io_uring_prep_poll_add(sqe, tfd, POLLIN);
+            // io_uring_sqe_set_data(sqe, nullptr);
+            if (io_uring_submit_and_wait(&ring, 1) < 0) panic("io_uring_submit_and_wait");
+        }
+
+        if (io_uring_wait_cqe(&ring, &cqe) < 0) panic("io_uring_wait_cqe");
         io_uring_cqe_seen(&ring, cqe);
 
-        auto* pdata = static_cast<OperationData *>(io_uring_cqe_get_data(cqe));
-        auto [coro, op] = *pdata;
-        if (coro) {
-            // Deleting pTimerData here results in use-after-free error.
-            // Mark the timer inactive, and delete it later.
-            pTimerData->second = OperationEnum::timeout_inactive;
-
-            // Stop polling the inactive timer
-            auto* sqe = io_uring_get_sqe(&ring);
-            io_uring_prep_poll_remove(sqe, pdata);
-            io_uring_sqe_set_data(sqe, new OperationData(nullptr, OperationEnum::timeout_inactive));
-
+        if (auto* coro = static_cast<Coroutine *>(io_uring_cqe_get_data(cqe))) {
+            // We don't remove the running time-poll event, it will be handled in next call
             return std::make_pair(coro, cqe->res);
         } else {
-            // We finally peeked the cqe out. Delete pTimerData here should be ok
-            delete pdata;
-            if (op != OperationEnum::timeout_active) goto retry;
             return std::nullopt;
         }
 #else
         io_event event;
-        int count = io_getevents(context, 1, 1, &event, &timeout);
-        if (count) {
-            auto [coro, op] = *static_cast<OperationData *>(event.data);
-            assert(coro && "CORO should not be null since we don't need to remove polling operation");
-            auto res = event.res;
-            return std::make_pair(coro, res);
+        if (io_getevents(context, 1, 1, &event, &timeout)) {
+            return std::make_pair(static_cast<Coroutine *>(event.data), event.res);
         } else {
             return std::nullopt;
         }

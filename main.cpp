@@ -4,12 +4,8 @@
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <netinet/in.h>
-#include <cerrno>
-#include <cstring>
 #include <string>
 #include <string_view>
-#include <system_error>
-#include <vector>
 #include <chrono>
 
 #include "coroutine.hpp"
@@ -56,7 +52,7 @@ void http_send_file(Coroutine& coro, std::string filename, int clientfd, int dir
         for (; st.st_size - offset > BUF_SIZE; offset += BUF_SIZE) {
             coro.await_readv(infd, { iov }, offset);
             coro.await_writev(clientfd, { iov });
-            coro.delay(1); // For debugging
+//            coro.delay(1); // For debugging
         }
         if (st.st_size > offset) {
             iov.iov_len = size_t(st.st_size - offset);

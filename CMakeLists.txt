@@ -23,3 +23,6 @@ if(Boost_FOUND)
     include_directories(${Boost_INCLUDE_DIR})
     target_link_libraries(${PROJECT_NAME} LINK_PRIVATE ${Boost_LIBRARIES})
 endif()
+
+string(APPEND CMAKE_CXX_FLAGS_DEBUG " -fno-omit-frame-pointer -fsanitize=address -D_GLIBCXX_DEBUG")
+string(APPEND CMAKE_LINKER_FLAGS_DEBUG " -fno-omit-frame-pointer -fsanitize=address")
