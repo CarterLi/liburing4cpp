@@ -16,7 +16,6 @@
 
 enum {
     SERVER_PORT = 8080,
-    BUF_NUMBER = 4, // 经测至多12个，多了报 EFAULT
     BUF_SIZE = 1024,
 };
 
@@ -158,25 +157,18 @@ int main(int argc, char* argv[]) {
     // 事件循环
     while (Coroutine::runningCoroutines) {
         // 获取已完成的IO事件
-#if !USE_LIBAIO
-        io_uring_cqe* cqe;
-        if (io_uring_wait_cqe(&ring, &cqe)) panic("wait_cqe");
-        auto* coro = static_cast<Coroutine *>(io_uring_cqe_get_data(cqe));
-        auto res = cqe->res;
-        io_uring_cqe_seen(&ring, cqe);
-#else
-        io_event event;
-        io_getevents(context, 1, 1, &event, nullptr);
-        auto* coro = static_cast<Coroutine *>(event.data);
-        auto res = event.res;
-#endif
+        if (auto some = Coroutine::timedwait_for_event({1, 0})) {
+            auto [coro, res] = some.value();
 
-        // 有已完成的事件，回到协程继续
-        try {
-            if (!coro->next(res)) delete coro;
-        } catch (std::runtime_error& e) {
-            fmt::print("{}\n", e.what());
-            delete coro;
+            // 有已完成的事件，回到协程继续
+            try {
+                if (!coro->next(res)) delete coro;
+            } catch (std::runtime_error& e) {
+                fmt::print("{}\n", e.what());
+                delete coro;
+            }
+        } else {
+            fmt::print("PING!\n");
         }
     }
 }
