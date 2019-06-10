@@ -21,3 +21,7 @@ Tested on `Linux archlinux-pc 5.1.7-arch1-1-ARCH`
 ## More info
 
 https://github.com/libuv/libuv/issues/1947
+
+## License
+
+Public domain
