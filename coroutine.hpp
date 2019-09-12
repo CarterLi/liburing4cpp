@@ -103,45 +103,25 @@ int await_##operation (int fd, iovec (&&ioves) [N], off_t offset = 0) { \
 #undef DEFINE_AWAIT_OP
 
 #if !USE_LIBAIO
-template <unsigned int N>
-int await_recvmsg(int sockfd, iovec (&&ioves) [N], uint32_t flags) {
-    msghdr msg = {
-        .msg_iov = ioves,
-        .msg_iovlen = N,
-    };
-    auto* sqe = io_uring_get_sqe(&ring);
-    sqe->opcode = IORING_OP_RECVMSG;
-    sqe->fd = sockfd;
-    sqe->addr = uintptr_t(&msg);
-    sqe->len = 1;
-    sqe->msg_flags = flags;
-    io_uring_sqe_set_data(sqe, this);
-    io_uring_submit(&ring);
-    this->yield();
-    int res = this->current().value();
-    if (res < 0) panic("recvmsg", -res);
-    return res;
+#define DEFINE_AWAIT_OP(operation) \
+template <unsigned int N> \
+int await_##operation(int sockfd, iovec (&&ioves) [N], uint32_t flags) { \
+    msghdr msg = { \
+        .msg_iov = ioves, \
+        .msg_iovlen = N, \
+    }; \
+    auto* sqe = io_uring_get_sqe(&ring); \
+    io_uring_prep_##operation(sqe, sockfd, &msg, flags); \
+    io_uring_sqe_set_data(sqe, this); \
+    io_uring_submit(&ring); \
+    this->yield(); \
+    int res = this->current().value(); \
+    if (res < 0) panic(#operation, -res); \
+    return res; \
 }
 
-template <unsigned int N>
-int await_sendmsg(int sockfd, iovec (&&ioves) [N], uint32_t flags) {
-    msghdr msg = {
-        .msg_iov = ioves,
-        .msg_iovlen = N,
-    };
-    auto* sqe = io_uring_get_sqe(&ring);
-    sqe->opcode = IORING_OP_SENDMSG;
-    sqe->fd = sockfd;
-    sqe->addr = uintptr_t(&msg);
-    sqe->len = 1;
-    sqe->msg_flags = flags;
-    io_uring_sqe_set_data(sqe, this);
-    io_uring_submit(&ring);
-    this->yield();
-    int res = this->current().value();
-    if (res < 0) panic("sendmsg", -res);
-    return res;
-}
+    DEFINE_AWAIT_OP(recvmsg)
+    DEFINE_AWAIT_OP(sendmsg)
 #else
 template <unsigned int N>
 int await_recvmsg(int sockfd, iovec (&&ioves) [N], uint32_t flags) {
