@@ -2,9 +2,9 @@
 
 Simple http server demo using [liburing](http://kernel.dk/io_uring.pdf) and [Cxx-yield](https://github.com/CarterLi/Cxx-yield/)
 
-Tested on `Linux archlinux-pc 5.1.7-arch1-1-ARCH`
+Tested on `Linux Ubuntu 5.3.0-10-generic #11-Ubuntu SMP Mon Sep 9 15:12:17 UTC 2019 x86_64 x86_64 x86_64 GNU/Linux`
 
-## Dependencies:
+## Dependencies
 
 * [liburing](http://git.kernel.dk/liburing) ( requires Linux 5.1 or later )
 * [libaio](http://git.infradead.org/users/hch/libaio.git) ( fallback, requires Linux 4.18 or later )

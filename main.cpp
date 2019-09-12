@@ -32,7 +32,7 @@ void http_send_file(Coroutine& coro, std::string filename, int clientfd, int dir
     if (struct stat st; infd < 0 || fstat(infd, &st) || !S_ISREG(st.st_mode)) {
         // 文件未找到情况下发送404 error响应
         fmt::print("{}: file not found!\n", filename);
-        coro.await_writev(clientfd, { to_iov(http_404_hdr) });
+        coro.await_sendmsg(clientfd, { to_iov(http_404_hdr) }, MSG_NOSIGNAL);
     } else {
         auto contentType = [filename_view = std::string_view(filename)]() {
             auto extension = filename_view.substr(filename_view.find_last_of('.') + 1);
@@ -42,22 +42,22 @@ void http_send_file(Coroutine& coro, std::string filename, int clientfd, int dir
         }();
 
         // 发送响应头
-        coro.await_writev(clientfd, {
+        coro.await_sendmsg(clientfd, {
             to_iov(fmt::format("HTTP/1.1 200 OK\r\nContent-type: {}\r\nContent-Length: {}\r\n\r\n", contentType, st.st_size)),
-        });
+        }, MSG_NOSIGNAL | MSG_MORE);
 
         off_t offset = 0;
         std::array<char, BUF_SIZE> filebuf;
         auto iov = to_iov(filebuf);
         for (; st.st_size - offset > BUF_SIZE; offset += BUF_SIZE) {
             coro.await_readv(infd, { iov }, offset);
-            coro.await_writev(clientfd, { iov });
+            coro.await_sendmsg(clientfd, { iov }, MSG_NOSIGNAL | MSG_MORE);
 //            coro.delay(1); // For debugging
         }
         if (st.st_size > offset) {
             iov.iov_len = size_t(st.st_size - offset);
             coro.await_readv(infd, { iov }, offset);
-            coro.await_writev(clientfd, { iov });
+            coro.await_sendmsg(clientfd, { iov }, MSG_NOSIGNAL);
         }
     }
 }
@@ -69,7 +69,7 @@ void serve(Coroutine& coro, int clientfd, int dirfd) {
 
     std::string_view buf_view;
     std::array<char, BUF_SIZE> buffer;
-    int res = coro.await_readv(clientfd, { to_iov(buffer) });
+    int res = coro.await_recvmsg(clientfd, { to_iov(buffer) }, MSG_NOSIGNAL);
     buf_view = std::string_view(buffer.data(), size_t(res));
 
     // 这里我们只处理GET请求
@@ -81,7 +81,7 @@ void serve(Coroutine& coro, int clientfd, int dirfd) {
     } else {
         // 其他HTTP请求处理，如POST，HEAD等，返回400错误
         fmt::print("unsupported request: {}\n", buf_view);
-        coro.await_writev(clientfd, { to_iov(http_400_hdr) });
+        coro.await_sendmsg(clientfd, { to_iov(http_400_hdr) }, MSG_NOSIGNAL);
     }
 }
 
@@ -135,11 +135,11 @@ int main(int argc, char* argv[]) {
 
     // 绑定端口
     if (sockaddr_in addr = {
-        AF_INET,
+        .sin_family = AF_INET,
         // 这里要注意，端口号一定要使用htons先转化为网络字节序，否则绑定的实际端口可能和你需要的不同
-        htons(SERVER_PORT),
-        { INADDR_ANY },
-        {}, // 消除编译器警告
+        .sin_port = htons(SERVER_PORT),
+        .sin_addr = { INADDR_ANY },
+        .sin_zero = {}, // 消除编译器警告
     }; bind(sockfd, reinterpret_cast<sockaddr *>(&addr), sizeof (sockaddr_in))) panic("socket binding");
 
     // 监听端口
