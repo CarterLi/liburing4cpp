@@ -70,7 +70,9 @@ task<int> async_delay(int second) {
     auto tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
     if (timerfd_settime(tfd, 0, &exp, nullptr)) panic("timerfd");
     on_scope_exit closefd([=]() { close(tfd); });
-    co_return co_await async_poll(tfd);
+    auto res = co_await async_poll(tfd);
+    fmt::print("{}\n", second);
+    co_return res;
 }
 
 static std::pair<completion<int> *, int> wait_for_event() {

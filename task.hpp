@@ -1,12 +1,11 @@
 #pragma once
 
 // Original source:
-// https://www.youtube.com/watch?v=8C8NnE1Dg4A&t=45m50s (Gor Nishanov, CppCon 2016)
+// https://github.com/Quuxplusone/coro/blob/master/include/coro/gor_task.h
 
 #include <exception>
 #include <experimental/coroutine>
 #include <variant>
-#include <span>
 
 template<class T>
 struct task {
@@ -15,12 +14,15 @@ struct task {
         std::experimental::coroutine_handle<void> waiter_;
 
         task get_return_object() { return task(this); }
-        auto initial_suspend() { return std::experimental::suspend_always{}; }
+        std::experimental::suspend_never initial_suspend() { return {}; }
         auto final_suspend() {
             struct Awaiter {
                 promise_type *me_;
                 bool await_ready() { return false; }
                 void await_suspend(std::experimental::coroutine_handle<void> caller) {
+                    // We won't call co_wait in main()
+                    // but await_suspend will only be called for co_wait
+                    // Therefore we have no waiter for tasks in main
                     if (me_->waiter_) me_->waiter_.resume();
                 }
                 void await_resume() {}
@@ -39,7 +41,6 @@ struct task {
     bool await_ready() { return false; }
     void await_suspend(std::experimental::coroutine_handle<void> caller) {
         coro_.promise().waiter_ = caller;
-        coro_.resume();
     }
     T await_resume() {
         if (coro_.promise().result_.index() == 2) {
@@ -49,11 +50,7 @@ struct task {
     }
 
     T get_result() {
-        return std::get<T>(coro_.promise().result_);
-    }
-
-    void start() {
-        await_suspend(nullptr);
+        return await_resume();
     }
 
     bool done() const {
@@ -79,9 +76,11 @@ private:
 
 template <typename T>
 struct completion {
-    bool await_ready() const noexcept { return false; }
-    void await_suspend(std::experimental::coroutine_handle<> handle) noexcept {
-        handle_ = handle;
+    bool await_ready() const noexcept {
+        return false;
+    }
+    void await_suspend(std::experimental::coroutine_handle<> caller) noexcept {
+        handle_ = caller;
     }
     T await_resume() const noexcept {
         if (result_.index() == 2) {
@@ -110,7 +109,7 @@ private:
 };
 
 template <typename T>
-task<std::vector<T>> taskAll(std::vector<task<T>> list) {
+task<std::vector<T>> taskAll1(std::vector<task<T>> list) {
     std::vector<T> result;
     result.reserve(list.size());
     for (auto&& t : list) {
@@ -120,24 +119,18 @@ task<std::vector<T>> taskAll(std::vector<task<T>> list) {
 }
 
 template <typename T>
-completion<T> taskAny_doesnt_work(std::vector<task<T>> list) {
-    completion<T> result;
-    std::vector<task<T>> tasks;
-    tasks.reserve(list.size());
-    for (auto& t : list) {
-        auto tmp = [&]() mutable -> task<T> {
-            try {
-                auto res = co_await t;
-                if (!result.done()) result.resolve(res);
-            } catch (...) {
-                if (tasks.size() == list.size()) {
-                    result.reject(std::make_exception_ptr("No tasks finished successfully"));
-                }
-            }
-            co_return T{};
+task<std::vector<T>> taskAll(std::vector<task<T>> list) {
+    std::vector<T> result(list.size());
+    size_t left = list.size();
+    completion<std::vector<T>> promise;
+    for (size_t i=0; i<list.size(); ++i) {
+        [&, i]() mutable -> task<bool> {
+            result[i] = co_await list[i];
+            left--;
+            if (!left) promise.resolve(std::move(result));
+            co_return true;
         }();
-        tmp.start();
-        tasks.push_back(std::move(tmp));
     }
-    return result;
+    co_await promise;
+    co_return result;
 }
