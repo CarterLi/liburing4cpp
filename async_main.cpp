@@ -12,14 +12,17 @@
 #include "global.hpp"
 #include "async_coro.hpp"
 
-task<bool> start() {
-    // TODO: less verbose code
-    std::vector<task<int>> vec;
-    vec.emplace_back(async_delay(1));
-    vec.emplace_back(async_delay(2));
-    vec.emplace_back(async_delay(3));
-    co_await taskAll<int>(std::move(vec));
-    co_return true;
+task<> start() {
+    co_await taskAny(std::array {
+        async_delay(4),
+    });
+    fmt::print("taskAny\n");
+    co_await taskAll(std::array {
+        async_delay(1),
+        async_delay(2),
+        async_delay(3),
+    });
+    fmt::print("taskAll\n");
 }
 
 int main(int argc, char* argv[]) {
