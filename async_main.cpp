@@ -116,12 +116,12 @@ task<> accept_connection(int serverfd, int dirfd) {
 }
 
 task<> start() {
-    co_await task<int>::when_any(std::array {
+    co_await when_any(std::array {
         async_delay(1),
         async_delay(2),
         async_delay(3),
     });
-    co_await task<int>::when_all(std::array {
+    co_await when_all(std::array {
         async_delay(1),
         async_delay(2),
         async_delay(3),
