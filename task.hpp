@@ -20,15 +20,18 @@ struct task_promise_base {
             task_promise_base *me_;
             bool await_ready() const noexcept { return false; }
             void await_suspend(std::experimental::coroutine_handle<void> caller) const noexcept {
-                // We won't call co_wait in main()
-                // but await_suspend will only be called for co_wait
-                // Therefore we have no waiter for tasks in main
-                if (me_->waiter_) me_->waiter_.resume();
+                if (me_->then) {
+                    me_->then();
+                } else if (me_->waiter_) {
+                    me_->waiter_.resume();
+                }
             }
             void await_resume() const noexcept {}
         };
         return Awaiter{this};
     }
+
+    std::function<void ()> then;
 
 protected:
     task_promise_base() = default;
@@ -64,7 +67,7 @@ private:
     std::optional<std::exception_ptr> result_;
 };
 
-template <class T>
+template <typename T>
 struct task {
     using promise_type = task_promise<T>;
     using handle_t = std::experimental::coroutine_handle<promise_type>;
@@ -103,10 +106,22 @@ struct task {
     ~task() {
         if (!coro_) return;
         if (!coro_.done()) {
-            fmt::print(stderr, "WARNING: Coro {} is not done yet, detaching. May result in memory leak\n", coro_.address());
+            coro_.promise().then = [coro_ = coro_] () mutable {
+                // FIXME: Does this do right thing?
+                if (coro_.promise().waiter_) {
+                    coro_.promise().waiter_.destroy();
+                }
+                coro_.destroy();
+            };
         } else {
             coro_.destroy();
         }
+    }
+
+    template <typename Fn>
+    void then(Fn&& fn) {
+        assert(coro_.promise().then || "Fn `then` has been attached");
+        coro_.promise().then = std::move(fn);
     }
 
 private:
@@ -134,93 +149,3 @@ template <typename T>
 task<T> task_promise<T>::get_return_object() { return task<T>(this); }
 
 task<> task_promise<void>::get_return_object() { return task<>(this); }
-
-template <typename T, size_t N>
-task<std::array<T, N>> when_all(std::array<task<T>, N> tasks) {
-    std::array<T, N> result;
-    std::array<task<>, N> tmp;
-    size_t left = tasks.size();
-    promise<std::array<T, N>> p;
-
-    for (size_t i=0; i<tasks.size(); ++i) {
-        tmp[i] = [&, i]() mutable -> task<> {
-            try {
-                result[i] = co_await tasks[i];
-                if (!--left) p.resolve(std::move(result));
-            } catch (...) {
-                p.reject(std::current_exception());
-            }
-        }();
-    }
-    co_await p;
-    co_return result;
-}
-
-template <typename T, size_t N>
-task<T> when_any(std::array<task<T>, N> tasks) {
-    std::array<task<>, N> tmp;
-    size_t left = tasks.size();
-    promise<T> p;
-
-    for (size_t i=0; i<tasks.size(); ++i) {
-        tmp[i] = [&, i]() mutable -> task<> {
-            try {
-                auto result = co_await tasks[i];
-                if (!p.done()) p.resolve(std::move(result));
-            } catch (...) {
-                if (!--left) {
-                    p.reject(
-                        std::make_exception_ptr(
-                            std::runtime_error("All tasks rejected")
-                        )
-                    );
-                }
-            }
-        }();
-    }
-    co_return co_await p;
-}
-
-template <size_t N>
-task<> when_all(std::array<task<>, N> tasks) {
-    std::array<task<>, N> tmp;
-    size_t left = tasks.size();
-    promise<> p;
-
-    for (size_t i=0; i<tasks.size(); ++i) {
-        tmp[i] = [&, i]() mutable -> task<> {
-            try {
-                co_await tasks[i];
-                if (!--left) p.resolve();
-            } catch (...) {
-                p.reject(std::current_exception());
-            }
-        }();
-    }
-    co_await p;
-}
-
-template <size_t N>
-task<> when_any(std::array<task<>, N> tasks) {
-    std::array<task<>, N> tmp;
-    size_t left = tasks.size();
-    promise<> p;
-
-    for (size_t i=0; i<tasks.size(); ++i) {
-        tmp[i] = [&, i]() mutable -> task<> {
-            try {
-                co_await tasks[i];
-                if (!p.done()) p.resolve();
-            } catch (...) {
-                if (!--left) {
-                    p.reject(
-                        std::make_exception_ptr(
-                            std::runtime_error("All tasks rejected")
-                        )
-                    );
-                }
-            }
-        }();
-    }
-    co_await p;
-}

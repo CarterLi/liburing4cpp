@@ -11,6 +11,7 @@
 
 #include "global.hpp"
 #include "async_coro.hpp"
+#include "when.hpp"
 
 enum {
     SERVER_PORT = 8080,
@@ -94,7 +95,7 @@ task<> accept_connection(int serverfd, int dirfd) {
         int clientfd = accept(serverfd, nullptr, nullptr);
 
         // 新建新协程处理请求
-        task<>* work = new task<>([=]() -> task<> {
+        [=](int clientfd) -> task<> {
             ++runningCoroutines;
             auto start = std::chrono::high_resolution_clock::now();
             try {
@@ -109,30 +110,29 @@ task<> accept_connection(int serverfd, int dirfd) {
             fmt::print("sockfd {} is closed, time used {}\n",
                 clientfd,
                 (std::chrono::high_resolution_clock::now() - start).count());
-            delete work;
             --runningCoroutines;
-        }());
+        }(clientfd);
     }
 }
 
-task<> start() {
-    co_await when_any(std::array {
-        async_delay(1),
-        async_delay(2),
-        async_delay(3),
-    });
-    co_await when_all(std::array {
-        async_delay(1),
-        async_delay(2),
-        async_delay(3),
-    });
-}
-
-int main() {
+int main_test() {
     if (io_uring_queue_init(32, &ring, 0)) panic("queue_init");
     on_scope_exit closerg([&]() { io_uring_queue_exit(&ring); });
 
-    auto work = start();
+    auto work = [] () -> task<> {
+        co_await when_any(std::array {
+            async_delay(1),
+            async_delay(2),
+            async_delay(3),
+        });
+        fmt::print("when_any\n");
+        co_await when_all(std::array {
+            async_delay(1),
+            async_delay(2),
+            async_delay(3),
+        });
+        fmt::print("when_all\n");
+    }();
 
     // Event loop
     while (!work.done()) {
@@ -145,7 +145,7 @@ int main() {
     return 0;
 }
 
-int main1(int argc, char* argv[]) {
+int main(int argc, char* argv[]) {
     if (argc != 2) {
         fmt::print("Usage: {} <ROOT_DIR>\n", argv[0]);
         return 1;
