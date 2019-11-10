@@ -9,8 +9,8 @@
 #include <chrono>
 #include <cerrno>
 
-#include "global.hpp"
-#include "async_coro.hpp"
+#include "io_service.hpp"
+#include "mime_dicts.hpp"
 
 enum {
     SERVER_PORT = 8080,
@@ -26,7 +26,7 @@ static constexpr const auto http_400_hdr = "HTTP/1.1 400 Bad Request\r\nContent-
 int runningCoroutines = 0;
 
 // 解析到HTTP请求的文件后，发送本地文件系统中的文件
-task<> http_send_file(std::string filename, int clientfd, int dirfd) {
+task<> http_send_file(io_service& service, std::string filename, int clientfd, int dirfd) {
     if (filename == "./") filename = "./index.html";
 
     // 尝试打开待发送文件
@@ -36,7 +36,7 @@ task<> http_send_file(std::string filename, int clientfd, int dirfd) {
     if (struct stat st; infd < 0 || fstat(infd, &st) || !S_ISREG(st.st_mode)) {
         // 文件未找到情况下发送404 error响应
         fmt::print("{}: file not found!\n", filename);
-        co_await async_sendmsg(clientfd, { to_iov(http_404_hdr) }, MSG_NOSIGNAL);
+        co_await service.sendmsg(clientfd, { to_iov(http_404_hdr) }, MSG_NOSIGNAL);
     } else {
         auto contentType = [filename_view = std::string_view(filename)]() {
             auto extension = filename_view.substr(filename_view.find_last_of('.') + 1);
@@ -46,7 +46,7 @@ task<> http_send_file(std::string filename, int clientfd, int dirfd) {
         }();
 
         // 发送响应头
-        co_await async_sendmsg(clientfd, {
+        co_await service.sendmsg(clientfd, {
             to_iov(fmt::format("HTTP/1.1 200 OK\r\nContent-type: {}\r\nContent-Length: {}\r\n\r\n", contentType, st.st_size)),
         }, MSG_NOSIGNAL | MSG_MORE);
 
@@ -54,26 +54,26 @@ task<> http_send_file(std::string filename, int clientfd, int dirfd) {
         std::array<char, BUF_SIZE> filebuf;
         auto iov = to_iov(filebuf);
         for (; st.st_size - offset > BUF_SIZE; offset += BUF_SIZE) {
-            co_await async_readv(infd, { iov }, offset);
-            co_await async_sendmsg(clientfd, { iov }, MSG_NOSIGNAL | MSG_MORE);
-            co_await async_delay(1); // For debugging
+            co_await service.readv(infd, { iov }, offset);
+            co_await service.sendmsg(clientfd, { iov }, MSG_NOSIGNAL | MSG_MORE);
+            co_await service.delay(1); // For debugging
         }
         if (st.st_size > offset) {
             iov.iov_len = size_t(st.st_size - offset);
-            co_await async_readv(infd, { iov }, offset);
-            co_await async_sendmsg(clientfd, { iov }, MSG_NOSIGNAL);
+            co_await service.readv(infd, { iov }, offset);
+            co_await service.sendmsg(clientfd, { iov }, MSG_NOSIGNAL);
         }
     }
 }
 
 // HTTP请求解析
-task<> serve(int clientfd, int dirfd) {
+task<> serve(io_service& service, int clientfd, int dirfd) {
     fmt::print("Serving connection, sockfd {}; number of running coroutines: {}\n",
          clientfd, runningCoroutines);
 
     std::string_view buf_view;
     std::array<char, BUF_SIZE> buffer;
-    int res = co_await async_recvmsg(clientfd, { to_iov(buffer) }, MSG_NOSIGNAL);
+    int res = co_await service.recvmsg(clientfd, { to_iov(buffer) }, MSG_NOSIGNAL);
     buf_view = std::string_view(buffer.data(), size_t(res));
 
     // 这里我们只处理GET请求
@@ -81,24 +81,22 @@ task<> serve(int clientfd, int dirfd) {
         // 获取请求的path
         auto file = "."s += buf_view.substr(4, buf_view.find(' ', 4) - 4);
         fmt::print("received request {} with sockfd {}\n", file, clientfd);
-        co_await http_send_file(file, clientfd, dirfd);
+        co_await http_send_file(service, file, clientfd, dirfd);
     } else {
         // 其他HTTP请求处理，如POST，HEAD等，返回400错误
         fmt::print("unsupported request: {}\n", buf_view);
-        co_await async_sendmsg(clientfd, { to_iov(http_400_hdr) }, MSG_NOSIGNAL);
+        co_await service.sendmsg(clientfd, { to_iov(http_400_hdr) }, MSG_NOSIGNAL);
     }
 }
 
-task<> accept_connection(int serverfd, int dirfd) {
-    while (co_await async_poll(serverfd)) {
-        int clientfd = accept(serverfd, nullptr, nullptr);
-
+task<> accept_connection(io_service& service, int serverfd, int dirfd) {
+    while (int clientfd = co_await service.accept(serverfd, nullptr, nullptr)) {
         // 新建新协程处理请求
-        [=](int clientfd) -> task<> {
+        [=, &service](int clientfd) -> task<> {
             ++runningCoroutines;
             auto start = std::chrono::high_resolution_clock::now();
             try {
-                co_await serve(clientfd, dirfd);
+                co_await serve(service, clientfd, dirfd);
             } catch (std::exception& e) {
                 fmt::print("sockfd {} crashed with exception: {}\n",
                     clientfd,
@@ -124,9 +122,6 @@ int main(int argc, char* argv[]) {
     if (dirfd < 0) panic("open dir");
     on_scope_exit closedir([=]() { close(dirfd); });
 
-    if (io_uring_queue_init(32, &ring, 0)) panic("queue_init");
-    on_scope_exit closerg([&]() { io_uring_queue_exit(&ring); });
-
     // 建立TCP套接字
     int sockfd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
     if (sockfd < 0) panic("socket creation");
@@ -149,13 +144,17 @@ int main(int argc, char* argv[]) {
     if (listen(sockfd, 128)) panic("listen");
     fmt::print("Listening: {}\n", SERVER_PORT);
 
-    auto work = accept_connection(sockfd, dirfd);
+    io_service service;
+
+    auto work = accept_connection(service, sockfd, dirfd);
 
     // Event loop
     while (!work.done()) {
-        auto [promise, res] = wait_for_event();
+        auto [promise, res] = service.wait_event();
 
         // Found a finished event, go back to its coroutine.
         promise->resolve(res);
     }
+
+    work.get_result();
 }

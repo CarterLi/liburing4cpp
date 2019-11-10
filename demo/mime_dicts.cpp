@@ -1,6 +1,4 @@
-#include "global.hpp"
-
-io_uring ring;
+#include "mime_dicts.hpp"
 
 const std::unordered_map<std::string_view, std::string_view> MimeDicts = {
     { "123", "application/vnd.lotus-1-2-3" },

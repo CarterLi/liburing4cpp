@@ -52,6 +52,7 @@ protected:
 template <typename T>
 struct task_promise: task_promise_base<T> {
     using task_promise_base<T>::result_;
+
     template <typename U>
     void return_value(U&& u) {
         result_.template emplace<1>(static_cast<U&&>(u));
@@ -60,7 +61,9 @@ struct task_promise: task_promise_base<T> {
 
 template <>
 struct task_promise<void>: task_promise_base<void> {
-    void return_void() {}
+    void return_void() {
+        result_.template emplace<1>(std::monostate {});
+    }
 };
 
 template <typename T>
@@ -69,17 +72,19 @@ struct task {
     using handle_t = std::experimental::coroutine_handle<promise_type>;
 
     bool await_ready() const noexcept { return false; }
+
     void await_suspend(std::experimental::coroutine_handle<> caller) noexcept {
         coro_.promise().waiter_ = caller;
     }
 
     T await_resume() const {
-        assert(coro_.promise().result_.index() > 0);
-        if (coro_.promise().result_.index() == 2) {
-            std::rethrow_exception(std::get<2>(coro_.promise().result_));
+        auto& result_ = coro_.promise().result_;
+        assert(result_.index() > 0);
+        if (result_.index() == 2) {
+            std::rethrow_exception(std::get<2>(result_));
         }
         if constexpr (!std::is_void_v<T>) {
-            return std::get<1>(coro_.promise().result_);
+            return std::get<1>(result_);
         }
     }
 
