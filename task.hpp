@@ -13,13 +13,15 @@
 template <typename T = void>
 struct task;
 
+template <typename T>
 struct task_promise_base {
+    task<T> get_return_object();
     std::experimental::suspend_never initial_suspend() { return {}; }
     auto final_suspend() {
         struct Awaiter {
             task_promise_base *me_;
             bool await_ready() const noexcept { return false; }
-            void await_suspend(std::experimental::coroutine_handle<void> caller) const noexcept {
+            void await_suspend(std::experimental::coroutine_handle<> caller) const noexcept {
                 if (me_->then) {
                     me_->then();
                 } else if (me_->waiter_) {
@@ -30,41 +32,35 @@ struct task_promise_base {
         };
         return Awaiter{this};
     }
-
-    std::function<void ()> then;
-
-protected:
-    task_promise_base() = default;
-    std::experimental::coroutine_handle<void> waiter_;
-};
-
-template <typename T>
-struct task_promise: task_promise_base {
-    task<T> get_return_object();
-    template <typename U>
-    void return_value(U&& u) {
-        result_.template emplace<1>(static_cast<U&&>(u));
-    }
     void unhandled_exception() {
         result_.template emplace<2>(std::current_exception());
     }
 
-private:
+    std::function<void ()> then;
+
+protected:
     friend class task<T>;
-    std::variant<std::monostate, T, std::exception_ptr> result_;
+    task_promise_base() = default;
+    std::experimental::coroutine_handle<> waiter_;
+    std::variant<
+        std::monostate,
+        std::conditional_t<std::is_void_v<T>, std::monostate, T>,
+        std::exception_ptr
+    > result_;
+};
+
+template <typename T>
+struct task_promise: task_promise_base<T> {
+    using task_promise_base<T>::result_;
+    template <typename U>
+    void return_value(U&& u) {
+        result_.template emplace<1>(static_cast<U&&>(u));
+    }
 };
 
 template <>
-struct task_promise<void>: task_promise_base {
-    task<> get_return_object();
+struct task_promise<void>: task_promise_base<void> {
     void return_void() {}
-    void unhandled_exception() {
-        result_.template emplace(std::current_exception());
-    }
-
-private:
-    friend class task<>;
-    std::optional<std::exception_ptr> result_;
 };
 
 template <typename T>
@@ -73,10 +69,19 @@ struct task {
     using handle_t = std::experimental::coroutine_handle<promise_type>;
 
     bool await_ready() const noexcept { return false; }
-    void await_suspend(std::experimental::coroutine_handle<void> caller) noexcept {
+    void await_suspend(std::experimental::coroutine_handle<> caller) noexcept {
         coro_.promise().waiter_ = caller;
     }
-    T await_resume() const;
+
+    T await_resume() const {
+        assert(coro_.promise().result_.index() > 0);
+        if (coro_.promise().result_.index() == 2) {
+            std::rethrow_exception(std::get<2>(coro_.promise().result_));
+        }
+        if constexpr (!std::is_void_v<T>) {
+            return std::get<1>(coro_.promise().result_);
+        }
+    }
 
     T get_result() const {
         return await_resume();
@@ -125,27 +130,12 @@ struct task {
     }
 
 private:
-    friend class task_promise<T>;
+    friend class task_promise_base<T>;
     task(promise_type *p) : coro_(handle_t::from_promise(*p)) {}
     handle_t coro_;
 };
 
 template <typename T>
-T task<T>::await_resume() const {
-    if (coro_.promise().result_.index() == 2) {
-        std::rethrow_exception(std::get<2>(coro_.promise().result_));
-    }
-    return std::get<1>(coro_.promise().result_);
+task<T> task_promise_base<T>::get_return_object() {
+    return task<T>(static_cast<task_promise<T> *>(this));
 }
-
-template <>
-void task<>::await_resume() const {
-    if (coro_.promise().result_) {
-        std::rethrow_exception(*coro_.promise().result_);
-    }
-}
-
-template <typename T>
-task<T> task_promise<T>::get_return_object() { return task<T>(this); }
-
-task<> task_promise<void>::get_return_object() { return task<>(this); }

@@ -2,6 +2,7 @@
 #include <functional>
 #include <system_error>
 #include <sys/timerfd.h>
+#include <unistd.h>
 #include <liburing.h>   // http://git.kernel.dk/liburing
 #include <sys/poll.h>
 #include <fmt/format.h> // https://github.com/fmtlib/fmt
@@ -20,15 +21,6 @@ template <size_t N>
 constexpr inline iovec to_iov(std::array<char, N>& array) {
     return to_iov(array.data(), array.size());
 }
-
-template <typename Fn>
-struct on_scope_exit {
-    on_scope_exit(Fn &&fn): _fn(std::move(fn)) {}
-    ~on_scope_exit() { this->_fn(); }
-
-private:
-    Fn _fn;
-};
 
 [[noreturn]]
 void panic(std::string_view sv, int err = 0) { // 简单起见，把错误直接转化成异常抛出，终止程序
