@@ -17,7 +17,7 @@ template <typename T>
 struct task_promise_base {
     task<T> get_return_object();
     std::experimental::suspend_never initial_suspend() { return {}; }
-    auto final_suspend() {
+    auto final_suspend() noexcept {
         struct Awaiter {
             task_promise_base *me_;
             bool await_ready() const noexcept { return false; }
@@ -39,7 +39,7 @@ struct task_promise_base {
     std::function<void ()> then;
 
 protected:
-    friend class task<T>;
+    friend struct task<T>;
     task_promise_base() = default;
     std::experimental::coroutine_handle<> waiter_;
     std::variant<
@@ -135,7 +135,7 @@ struct task {
     }
 
 private:
-    friend class task_promise_base<T>;
+    friend struct task_promise_base<T>;
     task(promise_type *p) : coro_(handle_t::from_promise(*p)) {}
     handle_t coro_;
 };

@@ -11,6 +11,7 @@
 
 #include "io_service.hpp"
 #include "mime_dicts.hpp"
+#include "when.hpp"
 
 enum {
     SERVER_PORT = 8080,
@@ -54,14 +55,18 @@ task<> http_send_file(io_service& service, std::string filename, int clientfd, i
         std::array<char, BUF_SIZE> filebuf;
         auto iov = to_iov(filebuf);
         for (; st.st_size - offset > BUF_SIZE; offset += BUF_SIZE) {
-            co_await service.readv(infd, { iov }, offset);
-            co_await service.sendmsg(clientfd, { iov }, MSG_NOSIGNAL | MSG_MORE);
+            co_await when_all(std::array {
+                service.readv(infd, { iov }, offset),
+                service.sendmsg(clientfd, { iov }, MSG_NOSIGNAL | MSG_MORE, IOSQE_IO_LINK),
+            });
             co_await service.delay(1); // For debugging
         }
         if (st.st_size > offset) {
             iov.iov_len = size_t(st.st_size - offset);
-            co_await service.readv(infd, { iov }, offset);
-            co_await service.sendmsg(clientfd, { iov }, MSG_NOSIGNAL);
+            co_await when_all(std::array {
+                service.readv(infd, { iov }, offset),
+                service.sendmsg(clientfd, { iov }, MSG_NOSIGNAL, IOSQE_IO_LINK),
+            });
         }
     }
 }

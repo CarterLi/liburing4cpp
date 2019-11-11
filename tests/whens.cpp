@@ -4,6 +4,9 @@
 int main() {
     io_service service;
     auto work = [&service] () -> task<> {
+        fmt::print("starting\n");
+        co_await service.delay(1);
+        fmt::print("ok\n");
         co_await when_any(std::array {
             service.delay(1),
             service.delay(2),

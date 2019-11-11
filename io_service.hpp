@@ -40,6 +40,29 @@ void panic(std::string_view sv, int err = 0) { // 简单起见，把错误直接
     throw std::system_error(err, std::generic_category(), sv.data());
 }
 
+io_uring_sqe* io_uring_get_sqe_safe(io_uring *ring) {
+    if (auto* sqe = io_uring_get_sqe(ring)) {
+        return sqe;
+    } else {
+        io_uring_submit(ring);
+        sqe = io_uring_get_sqe(ring);
+        assert(sqe && "sqe should not be NULL");
+        return sqe;
+    }
+}
+
+// This cannot be an inlined function, or `stack-use-after-scope` happens
+// forceinline won't work too
+#define AWAIT_WORK(sqe, iflags, command) \
+do { \
+    promise<int> p; \
+    sqe->flags = iflags; \
+    io_uring_sqe_set_data(sqe, &p); \
+    int res = co_await p; \
+    if (res < 0) panic(command, -res); \
+    co_return res; \
+} while (false)
+
 class io_service {
 public:
     io_service() {
@@ -56,12 +79,16 @@ public:
 // 异步读操作，不使用缓冲区
 #define DEFINE_AWAIT_OP(operation) \
     template <unsigned int N> \
-    task<int> operation (int fd, iovec (&&ioves) [N], off_t offset = 0, uint32_t flags = 0, std::string_view command = #operation) { \
-        auto* sqe = io_uring_get_sqe(&ring); \
-        assert(sqe && "sqe should not be NULL"); \
+    task<int> operation ( \
+        int fd, \
+        iovec (&&ioves) [N], \
+        off_t offset = 0, \
+        uint8_t iflags = 0, \
+        std::string_view command = #operation \
+    ) { \
+        auto* sqe = io_uring_get_sqe_safe(&ring); \
         io_uring_prep_##operation (sqe, fd, ioves, N, offset); \
-        sqe->flags = flags; \
-        return await_work(command, sqe); \
+        AWAIT_WORK(sqe, iflags, command); \
     }
     DEFINE_AWAIT_OP(readv)
     DEFINE_AWAIT_OP(writev)
@@ -69,78 +96,104 @@ public:
 
 #define DEFINE_AWAIT_OP(operation) \
     template <unsigned int N> \
-    task<int> operation(int sockfd, iovec (&&ioves) [N], uint32_t flags = 0, std::string_view command = #operation) { \
+    task<int> operation( \
+        int sockfd, \
+        iovec (&&ioves) [N], \
+        uint32_t flags, \
+        uint8_t iflags = 0, \
+        std::string_view command = #operation \
+    ) { \
         msghdr msg = { \
             .msg_iov = ioves, \
             .msg_iovlen = N, \
         }; \
-        auto* sqe = io_uring_get_sqe(&ring); \
+        auto* sqe = io_uring_get_sqe_safe(&ring); \
         io_uring_prep_##operation(sqe, sockfd, &msg, flags); \
-        return await_work(command, sqe); \
+        AWAIT_WORK(sqe, iflags, command); \
     }
 
     DEFINE_AWAIT_OP(recvmsg)
     DEFINE_AWAIT_OP(sendmsg)
 #undef DEFINE_AWAIT_OP
 
-    task<int> poll(int fd, std::string_view command = "poll") {
-        auto* sqe = io_uring_get_sqe(&ring);
-        assert(sqe && "sqe should not be NULL");
-        io_uring_prep_poll_add(sqe, fd, POLLIN);
-        return await_work(command, sqe);
+    task<int> poll(
+        int fd,
+        short poll_mask,
+        uint8_t iflags = 0,
+        std::string_view command = "poll"
+    ) {
+        auto* sqe = io_uring_get_sqe_safe(&ring);
+        io_uring_prep_poll_add(sqe, fd, poll_mask);
+        AWAIT_WORK(sqe, iflags, command);
     }
 
-    task<int> yield(std::string_view command = "yield") {
-        auto* sqe = io_uring_get_sqe(&ring);
-        assert(sqe && "sqe should not be NULL");
+    task<int> yield(
+        uint8_t iflags = 0,
+        std::string_view command = "yield"
+    ) {
+        auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_nop(sqe);
-        return await_work(command, sqe);
+        AWAIT_WORK(sqe, iflags, command);
     }
 
-#if 0
-    task<int> accept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0, std::string_view command = "accept") {
-        auto* sqe = io_uring_get_sqe(&ring);
-        assert(sqe && "sqe should not be NULL");
+#if defined(USE_NEW_IO_URING_FEATURES)
+    task<int> accept(
+        int fd,
+        sockaddr *addr,
+        socklen_t *addrlen,
+        int flags = 0,
+        uint8_t iflags = 0,
+        std::string_view command = "accept"
+    ) {
+        auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_accept(sqe, fd, addr, addrlen, flags);
-        return await_work(command, sqe);
+        AWAIT_WORK(sqe, iflags, command);
     }
 
-    task<int> delay(int second, std::string_view command = "delay") {
-        auto* sqe = io_uring_get_sqe(&ring);
-        assert(sqe && "sqe should not be NULL");
+    task<int> delay(
+        int second,
+        uint8_t iflags = 0,
+        std::string_view command = "delay"
+    ) {
+        auto* sqe = io_uring_get_sqe_safe(&ring);
         __kernel_timespec exp = { second, 0 };
         io_uring_prep_timeout(sqe, &exp, 0, 0);
-        return await_work(command, sqe);
+        AWAIT_WORK(sqe, iflags, command);
     }
 #else
-    task<int> accept(int fd, sockaddr *addr, socklen_t *addrlen, int flags = 0, std::string_view command = "delay") {
-        co_await poll(fd, command);
+    task<int> accept(
+        int fd,
+        sockaddr *addr,
+        socklen_t *addrlen,
+        int flags = 0,
+        uint8_t iflags = 0,
+        std::string_view command = "accept"
+    ) {
+        co_await poll(fd, POLLIN, iflags, command);
         co_return accept4(fd, addr, addrlen, flags);
     }
 
-    task<int> delay(int second) {
+    task<int> delay(
+        int second,
+        uint8_t iflags = 0,
+        std::string_view command = "delay"
+    ) {
         itimerspec exp = { {}, { second, 0 } };
         auto tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
         if (timerfd_settime(tfd, 0, &exp, nullptr)) panic("timerfd");
         on_scope_exit closefd([=]() { close(tfd); });
-        return poll(tfd, "delay");
+        // Cannot return poll directly or closefd will be called early incorrectly
+        // which results in bad file discriptor exception
+        co_return co_await poll(tfd, POLLIN, iflags, command);
     }
 #endif
-
-private:
-    task<int> await_work(std::string_view command, io_uring_sqe* sqe) {
-        promise<int> p;
-        io_uring_sqe_set_data(sqe, &p);
-        io_uring_submit(&ring);
-        int res = co_await p;
-        if (res < 0) panic(command, -res);
-        co_return res;
-    }
+#undef AWAIT_WORK
 
 public:
     std::pair<promise<int> *, int> wait_event() {
         io_uring_cqe* cqe;
-        promise<int> *coro;
+        promise<int>* coro;
+        io_uring_submit(&ring);
 
         do {
             if (io_uring_wait_cqe(&ring, &cqe)) panic("wait_cqe");

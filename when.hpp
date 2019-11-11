@@ -84,12 +84,16 @@ task<> when_any(std::array<task<>, N> tasks) {
                 if (!p.done()) waiters[i].then([&] () { p.resolve(); });
             } catch (...) {
                 if (!--left) {
-                    waiters[i].then([&] () {
-                        p.reject(
-                            std::make_exception_ptr(
-                                std::runtime_error("All tasks rejected")
-                            )
-                        );
+                    waiters[i].then([&, ex = std::current_exception()] () {
+                        try {
+                            try {
+                                std::rethrow_exception(ex);
+                            } catch (...) {
+                                std::throw_with_nested(std::runtime_error("All tasks rejected"));
+                            }
+                        } catch (...) {
+                            p.reject(std::current_exception());
+                        }
                     });
                 }
             }
