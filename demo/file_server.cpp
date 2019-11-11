@@ -57,16 +57,16 @@ task<> http_send_file(io_service& service, std::string filename, int clientfd, i
         auto iov = to_iov(filebuf);
         for (; st.st_size - offset > BUF_SIZE; offset += BUF_SIZE) {
             co_await when_all(std::array {
-                service.readv(infd, { iov }, offset),
-                service.sendmsg(clientfd, { iov }, MSG_NOSIGNAL | MSG_MORE, IOSQE_IO_LINK),
+                service.readv(infd, { iov }, offset, IOSQE_IO_LINK),
+                service.sendmsg(clientfd, { iov }, MSG_NOSIGNAL | MSG_MORE),
             });
-            co_await service.delay(1); // For debugging
+            co_await service.delay({ 1, 0 }); // For debugging
         }
         if (st.st_size > offset) {
             iov.iov_len = size_t(st.st_size - offset);
             co_await when_all(std::array {
-                service.readv(infd, { iov }, offset),
-                service.sendmsg(clientfd, { iov }, MSG_NOSIGNAL, IOSQE_IO_LINK),
+                service.readv(infd, { iov }, offset, IOSQE_IO_LINK),
+                service.sendmsg(clientfd, { iov }, MSG_NOSIGNAL),
             });
         }
     }

@@ -3,25 +3,29 @@
 #include "when.hpp"
 #include "io_service.hpp"
 
+using namespace std::chrono_literals;
+
 int main() {
     io_service service;
-    auto work = [&service] () -> task<> {
+    auto work = [] (io_service& service) -> task<> {
         fmt::print("starting\n");
-        co_await service.delay(1);
-        fmt::print("ok\n");
+        co_await service.delay(1s);
+        co_await service.delay(2s);
+        co_await service.delay(3s);
+        fmt::print("in sequence\n");
         co_await when_any(std::array {
-            service.delay(1),
-            service.delay(2),
-            service.delay(3),
+            service.delay(1s),
+            service.delay(2s),
+            service.delay(3s),
         });
-        fmt::print("when_any\n");
+        fmt::print("when any\n");
         co_await when_all(std::array {
-            service.delay(1),
-            service.delay(2),
-            service.delay(3),
+            service.delay(1s),
+            service.delay(2s),
+            service.delay(3s),
         });
-        fmt::print("when_all\n");
-    }();
+        fmt::print("when all\n");
+    }(service);
 
     // Event loop
     while (!work.done()) {

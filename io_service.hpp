@@ -1,6 +1,7 @@
 #pragma once
 #include <functional>
 #include <system_error>
+#include <chrono>
 #include <sys/timerfd.h>
 #include <unistd.h>
 #include <liburing.h>   // http://git.kernel.dk/liburing
@@ -29,6 +30,12 @@ private:
     Fn _fn;
 };
 
+constexpr inline __kernel_timespec dur2ts(std::chrono::nanoseconds dur) noexcept {
+    auto secs = std::chrono::duration_cast<std::chrono::seconds>(dur);
+    dur -= secs;
+    return { secs.count(), dur.count() };
+}
+
 [[noreturn]]
 void panic(std::string_view sv, int err = 0) { // 简单起见，把错误直接转化成异常抛出，终止程序
     if (err == 0) err = errno;
@@ -39,7 +46,7 @@ void panic(std::string_view sv, int err = 0) { // 简单起见，把错误直接
     throw std::system_error(err, std::generic_category(), sv.data());
 }
 
-io_uring_sqe* io_uring_get_sqe_safe(io_uring *ring) {
+io_uring_sqe* io_uring_get_sqe_safe(io_uring *ring) noexcept {
     if (auto* sqe = io_uring_get_sqe(ring)) {
         return sqe;
     } else {
@@ -67,7 +74,7 @@ public:
     io_service() {
         if (io_uring_queue_init(32, &ring, 0)) panic("queue_init");
     }
-    ~io_service() {
+    ~io_service() noexcept {
         io_uring_queue_exit(&ring);
     }
 
@@ -150,13 +157,12 @@ public:
     }
 
     task<int> delay(
-        int second,
+        __kernel_timespec ts,
         uint8_t iflags = 0,
         std::string_view command = "delay"
     ) {
         auto* sqe = io_uring_get_sqe_safe(&ring);
-        __kernel_timespec exp = { second, 0 };
-        io_uring_prep_timeout(sqe, &exp, 0, 0);
+        io_uring_prep_timeout(sqe, &ts, -1, 0);
         AWAIT_WORK(sqe, iflags, command);
     }
 #else
@@ -173,19 +179,29 @@ public:
     }
 
     task<int> delay(
-        int second,
-        uint8_t iflags = 0,
+        __kernel_timespec ts,
+        uint8_t iflags = 0, // IOSQE_IO_LINK doesn't work here since `timerfd_settime` is called before polling
         std::string_view command = "delay"
     ) {
-        itimerspec exp = { {}, { second, 0 } };
+        itimerspec exp = { {}, { ts.tv_sec, ts.tv_nsec } };
         auto tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
         if (timerfd_settime(tfd, 0, &exp, nullptr)) panic("timerfd");
         on_scope_exit closefd([=]() { close(tfd); });
         // Cannot return poll directly or closefd will be called early incorrectly
         // which results in bad file discriptor exception
-        co_return co_await poll(tfd, POLLIN, iflags, command);
+        co_await poll(tfd, POLLIN, iflags, command);
+        printf("%d\n", (int)ts.tv_sec);
+        co_return 0;
     }
 #endif
+
+    task<int> delay(
+        std::chrono::nanoseconds dur,
+        uint8_t iflags = 0,
+        std::string_view command = "delay"
+    ) {
+        return delay(dur2ts(dur), iflags, command);
+    }
 #undef AWAIT_WORK
 
 public:
@@ -229,6 +245,10 @@ public:
             }
         }
         return std::nullopt;
+    }
+
+    std::optional<std::pair<promise<int> *, int>> timedwait_event(std::chrono::nanoseconds dur) {
+        return timedwait_event(dur2ts(dur));
     }
 
 private:
