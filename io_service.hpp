@@ -5,7 +5,6 @@
 #include <unistd.h>
 #include <liburing.h>   // http://git.kernel.dk/liburing
 #include <sys/poll.h>
-#include <fmt/format.h> // https://github.com/fmtlib/fmt
 
 #include "task.hpp"
 
@@ -33,7 +32,7 @@ private:
 [[noreturn]]
 void panic(std::string_view sv, int err = 0) { // 简单起见，把错误直接转化成异常抛出，终止程序
     if (err == 0) err = errno;
-    fmt::print(stderr, "errno: {}\n", err);
+    fprintf(stderr, "errno: %d\n", err);
     if (err == EPIPE) {
         throw std::runtime_error("Broken pipe: client socket is closed");
     }

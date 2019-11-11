@@ -1,3 +1,5 @@
+#include <fmt/format.h> // https://github.com/fmtlib/fmt
+
 #include "when.hpp"
 #include "io_service.hpp"
 

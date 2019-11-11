@@ -8,6 +8,7 @@
 #include <string_view>
 #include <chrono>
 #include <cerrno>
+#include <fmt/format.h> // https://github.com/fmtlib/fmt
 
 #include "io_service.hpp"
 #include "mime_dicts.hpp"
