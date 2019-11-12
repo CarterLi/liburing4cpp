@@ -162,8 +162,13 @@ public:
         std::string_view command = "delay"
     ) {
         auto* sqe = io_uring_get_sqe_safe(&ring);
-        io_uring_prep_timeout(sqe, &ts, -1, 0);
-        AWAIT_WORK(sqe, iflags, command);
+        io_uring_prep_timeout(sqe, &ts, 0, 0);
+        promise<int> p;
+        sqe->flags = iflags;
+        io_uring_sqe_set_data(sqe, &p);
+        int res = co_await p;
+        if (res < 0 && res != -ETIME) panic(command, -res);
+        co_return res;
     }
 #else
     task<int> accept(
