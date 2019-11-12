@@ -71,8 +71,8 @@ do { \
 
 class io_service {
 public:
-    io_service() {
-        if (io_uring_queue_init(32, &ring, 0)) panic("queue_init");
+    io_service(int entries = 64) {
+        if (io_uring_queue_init(entries, &ring, 0)) panic("queue_init");
     }
     ~io_service() noexcept {
         io_uring_queue_exit(&ring);
@@ -82,22 +82,40 @@ public:
     io_service& operator =(const io_service&) = delete;
 
 public:
-// 异步读操作，不使用缓冲区
+
 #define DEFINE_AWAIT_OP(operation) \
     template <unsigned int N> \
     task<int> operation ( \
         int fd, \
         iovec (&&ioves) [N], \
-        off_t offset = 0, \
+        off_t offset, \
         uint8_t iflags = 0, \
         std::string_view command = #operation \
     ) { \
         auto* sqe = io_uring_get_sqe_safe(&ring); \
-        io_uring_prep_##operation (sqe, fd, ioves, N, offset); \
+        io_uring_prep_##operation(sqe, fd, ioves, N, offset); \
         AWAIT_WORK(sqe, iflags, command); \
     }
     DEFINE_AWAIT_OP(readv)
     DEFINE_AWAIT_OP(writev)
+#undef DEFINE_AWAIT_OP
+
+#define DEFINE_AWAIT_OP(operation) \
+    task<int> operation ( \
+        int fd, \
+        void* buf, \
+        unsigned nbytes, \
+        off_t offset, \
+        int buf_index, \
+        uint8_t iflags = 0, \
+        std::string_view command = #operation \
+    ) { \
+        auto* sqe = io_uring_get_sqe_safe(&ring); \
+        io_uring_prep_##operation(sqe, fd, buf, nbytes, offset, buf_index); \
+        AWAIT_WORK(sqe, iflags, command); \
+    }
+    DEFINE_AWAIT_OP(read_fixed)
+    DEFINE_AWAIT_OP(write_fixed)
 #undef DEFINE_AWAIT_OP
 
 #define DEFINE_AWAIT_OP(operation) \
@@ -254,6 +272,28 @@ public:
 
     std::optional<std::pair<promise<int> *, int>> timedwait_event(std::chrono::nanoseconds dur) {
         return timedwait_event(dur2ts(dur));
+    }
+
+public:
+    void register_files(std::initializer_list<int> fds) {
+        if (io_uring_register_files(&ring, fds.begin(), fds.size()) < 0) panic("io_uring_register_files");
+    }
+    void unregister_files() {
+        if (io_uring_unregister_files(&ring) < 0) panic("io_uring_unregister_files");
+    }
+
+public:
+    template <unsigned int N>
+    void register_buffers(iovec (&&ioves) [N]) {
+        if (io_uring_register_buffers(&ring, &ioves[0], N)) panic("io_uring_register_buffers");
+    }
+    void unregister_buffers() {
+        if (io_uring_unregister_buffers(&ring) < 0) panic("io_uring_unregister_buffers");
+    }
+
+public:
+    io_uring& get_handle() {
+        return ring;
     }
 
 private:
