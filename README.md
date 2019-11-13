@@ -2,6 +2,8 @@
 
 Modern C++ binding for [liburing](https://github.com/axboe/liburing) that uses C++2a Coroutines ( but still compiles for `clang` at C++17 mode with `-fcoroutines-ts` )
 
+Tested: `Linux archlinux-pc 5.3.11-arch1-1 #1 SMP PREEMPT Tue, 12 Nov 2019 22:19:48 +0000 x86_64 GNU/Linux`
+
 ## Project Structure
 
 ### task.hpp
