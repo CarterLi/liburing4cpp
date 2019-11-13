@@ -13,6 +13,7 @@
 template <typename T = void>
 struct task;
 
+// only for internal usage
 template <typename T>
 struct task_promise_base {
     task<T> get_return_object();
@@ -49,6 +50,7 @@ protected:
     > result_;
 };
 
+// only for internal usage
 template <typename T>
 struct task_promise: task_promise_base<T> {
     using task_promise_base<T>::result_;
@@ -66,6 +68,10 @@ struct task_promise<void>: task_promise_base<void> {
     }
 };
 
+/**
+ * An awaitable object that returned by an async function
+ * @warning do NOT discard this object when returned by some function, or UB WILL happen
+ */
 template <typename T>
 struct task {
     using promise_type = task_promise<T>;
@@ -88,14 +94,18 @@ struct task {
         }
     }
 
+    /** Get the result hold by this task */
     T get_result() const {
+        assert(done());
         return await_resume();
     }
 
+    /** Get is the coroutine done */
     bool done() const {
         return coro_.done();
     }
 
+    /** Only for placeholder */
     task(): coro_(nullptr) {};
 
     task(const task&) = delete;
@@ -113,6 +123,11 @@ struct task {
         return *this;
     }
 
+    /** Destroy the task object
+     * @warning It's allowed to destroy the object before the coroutine is done.
+     * @warning The program will try to destroy the internal coroutine handle to avoid memory leaking
+     * @warning But IT'S STILL BUGGY
+     */
     ~task() {
         if (!coro_) return;
         if (!coro_.done()) {
@@ -128,6 +143,7 @@ struct task {
         }
     }
 
+    // Only for internal usage
     template <typename Fn>
     void then(Fn&& fn) {
         assert(coro_.promise().then || "Fn `then` has been attached");

@@ -4,6 +4,7 @@
 #include <variant>
 #include <optional>
 
+/** An awaitable object that can be created directly (without calling an async function) */
 template <typename T = void>
 struct promise {
     bool await_ready() const noexcept {
@@ -22,6 +23,7 @@ struct promise {
         }
     }
 
+    /** Resolve the promise, and resume the coroutine */
     template <typename U, typename = std::enable_if_t<std::is_convertible_v<U, T>>>
     void resolve(U&& u) {
         result_.template emplace<1>(static_cast<U&&>(u));
@@ -32,11 +34,13 @@ struct promise {
         result_.template emplace<1>(std::monostate{});
         handle_.resume();
     }
+    /** Reject the promise, and resume the coroutine */
     void reject(std::exception_ptr eptr) {
         result_.template emplace<2>(eptr);
         handle_.resume();
     }
 
+    /** Get is the coroutine done */
     bool done() const {
         return handle_.done();
     }

@@ -2,6 +2,11 @@
 
 #include "task.hpp"
 
+/** Return a task that will be finished when all given tasks are finished
+ * @param tasks tasks to wait
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/all
+ * @throw once any task are failed
+ */
 template <typename T, size_t N>
 task<std::array<T, N>> when_all(std::array<task<T>, N> tasks) {
     std::array<T, N> result;
@@ -15,7 +20,9 @@ task<std::array<T, N>> when_all(std::array<task<T>, N> tasks) {
                 result[i] = co_await tasks[i];
                 if (!--left) waiters[i].then([&] () { p.resolve(); });
             } catch (...) {
-                waiters[i].then([&] () { p.reject(std::current_exception()); });
+                waiters[i].then([ex = std::current_exception()] () {
+                    p.reject(ex);
+                });
             }
         }(i);
     }
@@ -23,6 +30,11 @@ task<std::array<T, N>> when_all(std::array<task<T>, N> tasks) {
     co_return result;
 }
 
+/** Return a task that will be finished if any given task are finished
+ * @param tasks tasks to wait
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/any
+ * @throw once all given tasks are rejected
+ */
 template <typename T, size_t N>
 task<T> when_any(std::array<task<T>, N> tasks) {
     T result;
@@ -37,12 +49,8 @@ task<T> when_any(std::array<task<T>, N> tasks) {
                 if (!p.done()) waiters[i].then([&] () { p.resolve(); });
             } catch (...) {
                 if (!--left) {
-                    waiters[i].then([&] () {
-                        p.reject(
-                            std::make_exception_ptr(
-                                std::runtime_error("All tasks rejected")
-                            )
-                        );
+                    waiters[i].then([ex = std::current_exception()] () {
+                        p.reject(ex);
                     });
                 }
             }
@@ -64,7 +72,9 @@ task<> when_all(std::array<task<>, N> tasks) {
                 co_await tasks[i];
                 if (!--left) waiters[i].then([&] () { p.resolve(); });
             } catch (...) {
-                waiters[i].then([&] () { p.reject(std::current_exception()); });
+                waiters[i].then([&, ex = std::current_exception()] () {
+                    p.reject(ex);
+                });
             }
         }(i);
     }
@@ -85,15 +95,7 @@ task<> when_any(std::array<task<>, N> tasks) {
             } catch (...) {
                 if (!--left) {
                     waiters[i].then([&, ex = std::current_exception()] () {
-                        try {
-                            try {
-                                std::rethrow_exception(ex);
-                            } catch (...) {
-                                std::throw_with_nested(std::runtime_error("All tasks rejected"));
-                            }
-                        } catch (...) {
-                            p.reject(std::current_exception());
-                        }
+                        p.reject(ex);
                     });
                 }
             }
