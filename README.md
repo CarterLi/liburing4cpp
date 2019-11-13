@@ -2,7 +2,13 @@
 
 Modern C++ binding for [liburing](https://github.com/axboe/liburing) that uses C++2a Coroutines ( but still compiles for `clang` at C++17 mode with `-fcoroutines-ts` )
 
-Tested: `Linux archlinux-pc 5.3.11-arch1-1 #1 SMP PREEMPT Tue, 12 Nov 2019 22:19:48 +0000 x86_64 GNU/Linux`
+Originally named liburing-http-demo ( this project was originally started for demo )
+
+## Requirements
+
+Requires the latest stable linux kernel ( currently 5.3 ). Since [io_uring](https://git.kernel.dk/cgit/liburing/) is in active development, we will drop old kernel support when every new linux kernel version is released ( before the next LTS version is released, maybe ).
+
+Tested: `Linux archlinux-pc 5.3.11-arch1-1 #1 SMP PREEMPT Tue, 12 Nov 2019 22:19:48 +0000 x86_64 GNU/Linux` with `clang-9.0.0`
 
 ## Project Structure
 
@@ -40,7 +46,7 @@ A cp command inspired by original [liburing link-cp demo](https://github.com/axb
 
 This library is header only. It provides some demos for testing
 
-`make`, requires clang++-9; depends on liburing & [fmt](http://fmtlib.net/)
+`make`, requires clang++-9, `-std=c++17 -stdlib=libc++ -fcoroutines-ts`; depends on liburing & [fmt](http://fmtlib.net/)
 
 ## License
 
