@@ -20,7 +20,7 @@ task<std::array<T, N>> when_all(std::array<task<T>, N> tasks) {
                 result[i] = co_await tasks[i];
                 if (!--left) waiters[i].then([&] () { p.resolve(); });
             } catch (...) {
-                waiters[i].then([ex = std::current_exception()] () {
+                waiters[i].then([&, ex = std::current_exception()] () {
                     p.reject(ex);
                 });
             }
@@ -49,7 +49,7 @@ task<T> when_any(std::array<task<T>, N> tasks) {
                 if (!p.done()) waiters[i].then([&] () { p.resolve(); });
             } catch (...) {
                 if (!--left) {
-                    waiters[i].then([ex = std::current_exception()] () {
+                    waiters[i].then([&, ex = std::current_exception()] () {
                         p.reject(ex);
                     });
                 }

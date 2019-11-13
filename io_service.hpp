@@ -326,7 +326,6 @@ public:
         // Cannot return poll directly or closefd will be called early incorrectly
         // which results in bad file discriptor exception
         co_await poll(tfd, POLLIN, iflags, command);
-        printf("%d\n", (int)ts.tv_sec);
         co_return 0;
     }
 #endif
