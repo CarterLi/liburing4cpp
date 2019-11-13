@@ -135,7 +135,7 @@ int main(int argc, char* argv[]) {
         .sin_family = AF_INET,
         .sin_port = htons(SERVER_PORT),
         .sin_addr = { INADDR_ANY },
-        .sin_zero = {}, // 消除编译器警告
+        .sin_zero = {}, // Silense compiler warnings
     }; bind(sockfd, reinterpret_cast<sockaddr *>(&addr), sizeof (sockaddr_in))) panic("socket binding");
 
     if (listen(sockfd, 128)) panic("listen");
