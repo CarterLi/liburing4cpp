@@ -38,6 +38,7 @@ task<> copy_file(io_service& service, off_t insize) {
 
     off_t offset = 0;
     for (; offset < insize - BS; offset += BS) {
+        // We MUST push these tasks into a vector to preventing them from early destruction.
         tmp.push_back(service.read_fixed(0, buf.data(), buf.size(), offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK));
         tmp.push_back(service.write_fixed(1, buf.data(), buf.size(), offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK));
     }
