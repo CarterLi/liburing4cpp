@@ -40,7 +40,7 @@ struct promise {
         handle_.resume();
     }
 
-    /** Get is the coroutine done */
+    /** Get whether the coroutine is done */
     bool done() const {
         return handle_.done();
     }
