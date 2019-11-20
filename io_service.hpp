@@ -7,6 +7,7 @@
 #include <liburing.h>   // http://git.kernel.dk/liburing
 #include <sys/poll.h>
 
+#include "promise.hpp"
 #include "task.hpp"
 
 /** Helper functions to fill an iovec struct */
@@ -69,14 +70,18 @@ io_uring_sqe* io_uring_get_sqe_safe(io_uring *ring) noexcept {
 
 // This cannot be an inlined function, or `stack-use-after-scope` happens
 // forceinline won't work too
-#define AWAIT_WORK(sqe, iflags, command) \
-do {                                     \
-    promise<int> p;                      \
-    io_uring_sqe_set_flags(sqe, iflags); \
-    io_uring_sqe_set_data(sqe, &p);      \
-    int res = co_await p;                \
-    if (res < 0) panic(command, -res);   \
-    co_return res;                       \
+#define AWAIT_WORK(sqe, iflags, cancel_opcode, command)     \
+do {                                                        \
+    promise<int> p([pp = &p, pring = &ring] () {            \
+        io_uring_sqe *sqe = io_uring_get_sqe_safe(pring);   \
+        io_uring_prep_rw(cancel_opcode, sqe, -1, pp, 0, 0); \
+        io_uring_submit(pring);                             \
+    });                                                     \
+    io_uring_sqe_set_flags(sqe, iflags);                    \
+    io_uring_sqe_set_data(sqe, &p);                         \
+    int res = co_await p;                                   \
+    if (res < 0 && res != -ETIME) panic(command, -res);     \
+    co_return res;                                          \
 } while (false)
 
 class io_service {
@@ -101,19 +106,19 @@ public:
 
 public:
 
-#define DEFINE_AWAIT_OP(operation)                            \
-    template <unsigned int N>                                 \
-    [[nodiscard]]                                             \
-    task<int> operation (                                     \
-        int fd,                                               \
-        iovec (&&ioves) [N],                                  \
-        off_t offset,                                         \
-        uint8_t iflags = 0,                                   \
-        std::string_view command = #operation                 \
-    ) {                                                       \
-        auto* sqe = io_uring_get_sqe_safe(&ring);             \
-        io_uring_prep_##operation(sqe, fd, ioves, N, offset); \
-        AWAIT_WORK(sqe, iflags, command);                     \
+#define DEFINE_AWAIT_OP(operation)                                \
+    template <unsigned int N>                                     \
+    [[nodiscard]]                                                 \
+    task<int> operation (                                         \
+        int fd,                                                   \
+        iovec (&&ioves) [N],                                      \
+        off_t offset,                                             \
+        uint8_t iflags = 0,                                       \
+        std::string_view command = #operation                     \
+    ) {                                                           \
+        auto* sqe = io_uring_get_sqe_safe(&ring);                 \
+        io_uring_prep_##operation(sqe, fd, ioves, N, offset);     \
+        AWAIT_WORK(sqe, iflags, IORING_OP_ASYNC_CANCEL, command); \
     }
 
     /** Read data into multiple buffers asynchronously
@@ -150,7 +155,7 @@ public:
     ) {                                                                     \
         auto* sqe = io_uring_get_sqe_safe(&ring);                           \
         io_uring_prep_##operation(sqe, fd, buf, nbytes, offset, buf_index); \
-        AWAIT_WORK(sqe, iflags, command);                                   \
+        AWAIT_WORK(sqe, iflags, IORING_OP_ASYNC_CANCEL, command);           \
     }
 
     /** Read data into a fixed buffer asynchronously
@@ -192,7 +197,7 @@ public:
     ) {
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_fsync(sqe, fd, fsync_flags);
-        AWAIT_WORK(sqe, iflags, command);
+        AWAIT_WORK(sqe, iflags, IORING_OP_ASYNC_CANCEL, command);
     }
 
     /** Sync a file segment with disk asynchronously
@@ -214,26 +219,26 @@ public:
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_rw(IORING_OP_SYNC_FILE_RANGE, sqe, fd, nullptr, nbytes, offset);
         sqe->sync_range_flags = sync_range_flags;
-        AWAIT_WORK(sqe, iflags, command);
+        AWAIT_WORK(sqe, iflags, IORING_OP_ASYNC_CANCEL, command);
     }
 
-#define DEFINE_AWAIT_OP(operation)                           \
-    template <unsigned int N>                                \
-    [[nodiscard]]                                            \
-    task<int> operation(                                     \
-        int sockfd,                                          \
-        iovec (&&ioves) [N],                                 \
-        uint32_t flags,                                      \
-        uint8_t iflags = 0,                                  \
-        std::string_view command = #operation                \
-    ) {                                                      \
-        msghdr msg = {                                       \
-            .msg_iov = ioves,                                \
-            .msg_iovlen = N,                                 \
-        };                                                   \
-        auto* sqe = io_uring_get_sqe_safe(&ring);            \
-        io_uring_prep_##operation(sqe, sockfd, &msg, flags); \
-        AWAIT_WORK(sqe, iflags, command);                    \
+#define DEFINE_AWAIT_OP(operation)                                \
+    template <unsigned int N>                                     \
+    [[nodiscard]]                                                 \
+    task<int> operation(                                          \
+        int sockfd,                                               \
+        iovec (&&ioves) [N],                                      \
+        uint32_t flags,                                           \
+        uint8_t iflags = 0,                                       \
+        std::string_view command = #operation                     \
+    ) {                                                           \
+        msghdr msg = {                                            \
+            .msg_iov = ioves,                                     \
+            .msg_iovlen = N,                                      \
+        };                                                        \
+        auto* sqe = io_uring_get_sqe_safe(&ring);                 \
+        io_uring_prep_##operation(sqe, sockfd, &msg, flags);      \
+        AWAIT_WORK(sqe, iflags, IORING_OP_ASYNC_CANCEL, command); \
     }
 
     /** Receive a message from a socket asynchronously
@@ -274,7 +279,7 @@ public:
     ) {
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_poll_add(sqe, fd, poll_mask);
-        AWAIT_WORK(sqe, iflags, command);
+        AWAIT_WORK(sqe, iflags, IORING_OP_POLL_REMOVE, command);
     }
 
     /** Enqueue a NOOP command, which eventually acts like pthread_yield when awaiting
@@ -291,7 +296,7 @@ public:
     ) {
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_nop(sqe);
-        AWAIT_WORK(sqe, iflags, command);
+        AWAIT_WORK(sqe, iflags, IORING_OP_ASYNC_CANCEL, command);
     }
 
 #if defined(USE_NEW_IO_URING_FEATURES)
@@ -314,7 +319,7 @@ public:
     ) {
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_accept(sqe, fd, addr, addrlen, flags);
-        AWAIT_WORK(sqe, iflags, command);
+        AWAIT_WORK(sqe, iflags, IORING_OP_ASYNC_CANCEL, command);
     }
 
     /** Wait for specified duration asynchronously
@@ -333,12 +338,7 @@ public:
     ) {
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_timeout(sqe, &ts, 0, 0);
-        promise<int> p;
-        io_uring_sqe_set_flags(sqe, iflags);
-        io_uring_sqe_set_data(sqe, &p);
-        int res = co_await p;
-        if (res < 0 && res != -ETIME) panic(command, -res);
-        co_return res;
+        AWAIT_WORK(sqe, iflags, IORING_OP_TIMEOUT_REMOVE, command);
     }
 #else
     [[nodiscard]]
@@ -366,8 +366,7 @@ public:
         on_scope_exit closefd([=]() { close(tfd); });
         // Cannot return poll directly or closefd will be called early incorrectly
         // which results in bad file discriptor exception
-        co_await poll(tfd, POLLIN, iflags, command);
-        co_return 0;
+        co_return co_await poll(tfd, POLLIN, iflags, command);
     }
 #endif
 

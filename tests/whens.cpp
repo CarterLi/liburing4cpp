@@ -25,6 +25,10 @@ int main() {
             service.delay(3s),
         });
         fmt::print("when all\n");
+        auto t = service.delay(1s);
+        t.cancel();
+        co_await t;
+        fmt::print("cancel\n");
     }(service);
 
     // Event loop

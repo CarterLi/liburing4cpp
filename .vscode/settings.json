@@ -86,6 +86,7 @@
     "csignal": "cpp",
     "map": "cpp",
     "__tree": "cpp",
-    "compare": "cpp"
+    "compare": "cpp",
+    "__functional_03": "cpp"
   }
 }

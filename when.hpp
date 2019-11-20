@@ -1,6 +1,7 @@
 #pragma once
 
 #include "task.hpp"
+#include "promise.hpp"
 
 /** Return a task that will be finished when all given tasks are finished
  * @param tasks tasks to wait

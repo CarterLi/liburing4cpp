@@ -8,8 +8,8 @@
 #include <variant>
 #include <array>
 
-#include "promise.hpp"
-
+struct promise_base;
+struct task_base;
 template <typename T = void>
 struct task;
 
@@ -17,11 +17,12 @@ struct task;
 template <typename T>
 struct task_promise_base {
     task<T> get_return_object();
-    std::experimental::suspend_never initial_suspend() { return {}; }
+    auto initial_suspend() { return std::experimental::suspend_never(); }
     auto final_suspend() noexcept {
-        struct Awaiter {
+        struct Awaiter: std::experimental::suspend_always {
             task_promise_base *me_;
-            bool await_ready() const noexcept { return false; }
+
+            Awaiter(task_promise_base *me): me_(me) {};
             void await_suspend(std::experimental::coroutine_handle<> caller) const noexcept {
                 if (me_->then) {
                     me_->then();
@@ -29,9 +30,8 @@ struct task_promise_base {
                     me_->waiter_.resume();
                 }
             }
-            void await_resume() const noexcept {}
         };
-        return Awaiter{this};
+        return Awaiter(this);
     }
     void unhandled_exception() {
         result_.template emplace<2>(std::current_exception());
@@ -40,7 +40,8 @@ struct task_promise_base {
     std::function<void ()> then;
 
 protected:
-    friend struct task<T>;
+    template <typename TT>
+    friend struct task;
     task_promise_base() = default;
     std::experimental::coroutine_handle<> waiter_;
     std::variant<
@@ -48,12 +49,18 @@ protected:
         std::conditional_t<std::is_void_v<T>, std::monostate, T>,
         std::exception_ptr
     > result_;
+    std::variant<
+        std::monostate,
+        task_base *,
+        promise_base *
+    > callee_;
 };
 
 // only for internal usage
 template <typename T>
 struct task_promise: task_promise_base<T> {
     using task_promise_base<T>::result_;
+    using task_promise_base<T>::callee_;
 
     template <typename U>
     void return_value(U&& u) {
@@ -68,18 +75,27 @@ struct task_promise<void>: task_promise_base<void> {
     }
 };
 
+// This is NOT a polymorphic class, its destructor is NOT virtual
+struct task_base: std::experimental::suspend_always {
+    task_base() = default;
+    task_base(const task_base&) = delete;
+    task_base& operator =(const task_base&) = delete;
+
+    virtual void cancel() = 0;
+};
+
 /**
  * An awaitable object that returned by an async function
  * @warning do NOT discard this object when returned by some function, or UB WILL happen
  */
 template <typename T>
-struct task {
+struct task final: task_base {
     using promise_type = task_promise<T>;
     using handle_t = std::experimental::coroutine_handle<promise_type>;
 
-    bool await_ready() const noexcept { return false; }
-
-    void await_suspend(std::experimental::coroutine_handle<> caller) noexcept {
+    template <typename TT>
+    void await_suspend(std::experimental::coroutine_handle<task_promise<TT>> caller) noexcept {
+        caller.promise().callee_ = this;
         coro_.promise().waiter_ = caller;
     }
 
@@ -108,14 +124,10 @@ struct task {
     /** Only for placeholder */
     task(): coro_(nullptr) {};
 
-    task(const task&) = delete;
-
     task(task&& other) noexcept {
         coro_ = other.coro_;
         other.coro_ = nullptr;
     }
-
-    task& operator =(const task&) = delete;
 
     task& operator =(task&& other) noexcept {
         if (coro_) coro_.destroy();
@@ -132,9 +144,10 @@ struct task {
         if (!coro_) return;
         if (!coro_.done()) {
             coro_.promise().then = [coro_ = coro_] () mutable {
+                auto p = coro_.promise();
                 // FIXME: Does this do right thing?
-                if (coro_.promise().waiter_) {
-                    coro_.promise().waiter_.destroy();
+                if (p.waiter_) {
+                    p.waiter_.destroy();
                 }
                 coro_.destroy();
             };
@@ -146,13 +159,24 @@ struct task {
     // Only for internal usage
     template <typename Fn>
     void then(Fn&& fn) {
-        assert(coro_.promise().then || "Fn `then` has been attached");
-        coro_.promise().then = std::move(fn);
+        auto& p = coro_.promise();
+        assert(p.then || "Fn `then` has been attached");
+        p.then = std::move(fn);
+    }
+
+    void cancel() override {
+        auto& callee = coro_.promise().callee_;
+        assert(callee.index() != 0);
+        if (callee.index() == 1) {
+            return std::get<1>(callee)->cancel();
+        } else {
+            return std::get<2>(callee)->cancel();
+        }
     }
 
 private:
     friend struct task_promise_base<T>;
-    task(promise_type *p) : coro_(handle_t::from_promise(*p)) {}
+    task(promise_type *p): coro_(handle_t::from_promise(*p)) {}
     handle_t coro_;
 };
 
