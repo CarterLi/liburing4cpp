@@ -10,6 +10,9 @@
 template <typename T = void>
 struct promise final: std::experimental::suspend_always, cancelable {
     promise() = default;
+    /** Create a promise with cancellation support
+     * @param cancel_fn a function that cancels this promise
+     */
     template <typename CancelFn>
     promise(CancelFn&& cancel_fn): cancel_fn_(std::move(cancel_fn)) {}
 
@@ -51,6 +54,9 @@ struct promise final: std::experimental::suspend_always, cancelable {
         return waiter_.done();
     }
 
+    /** Attempt to cancel the operation bound in this promise
+     * @throw (std::bad_function_call) If the operation doesn't support cancellation
+     */
     void cancel() override {
         return cancel_fn_();
     }

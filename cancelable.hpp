@@ -1,12 +1,8 @@
 #pragma once
 
-template <typename T>
-struct task;
-
-template <typename T>
-struct promise;
-
-// This is NOT a polymorphic class, its destructor is NOT virtual
+/** Indicate a class is cancelable
+ * @warning This is NOT a polymorphic class, its destructor is NOT virtual
+ */
 struct cancelable {
     virtual void cancel() = 0;
 

@@ -153,6 +153,10 @@ struct task final: std::experimental::suspend_always, cancelable {
         coro_.promise().then = std::move(fn);
     }
 
+    /** Attempt to cancel the operation bound in this task
+     * @note task itself doesn't support cancellation, the request is forwarded to inner promise.
+     * @throw (std::bad_function_call) If the operation doesn't support cancellation
+     */
     void cancel() override {
         assert(coro_.promise().callee_);
         coro_.promise().callee_->cancel();
