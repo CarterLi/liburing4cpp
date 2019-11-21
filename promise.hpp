@@ -4,24 +4,18 @@
 #include <variant>
 #include <optional>
 
-#include "task.hpp"
-
-struct promise_base: std::experimental::suspend_always {
-    promise_base() = default;
-    template <typename CancelFn>
-    promise_base(CancelFn&& fn): cancel(std::move(fn)) {}
-
-    const std::function<void ()> cancel;
-};
+#include "cancelable.hpp"
 
 /** An awaitable object that can be created directly (without calling an async function) */
 template <typename T = void>
-struct promise: promise_base {
-    using promise_base::promise_base;
+struct promise final: std::experimental::suspend_always, cancelable {
+    promise() = default;
+    template <typename CancelFn>
+    promise(CancelFn&& cancel_fn): cancel_fn_(std::move(cancel_fn)) {}
 
-    template <typename TT>
-    void await_suspend(std::experimental::coroutine_handle<task_promise<TT>> caller) noexcept {
-        caller.promise().callee_ = this;
+    template <typename TPromise>
+    void await_suspend(std::experimental::coroutine_handle<TPromise> caller) noexcept {
+        on_suspended(&caller.promise().callee_);
         waiter_ = caller;
     }
     T await_resume() const {
@@ -29,6 +23,7 @@ struct promise: promise_base {
         if (result_.index() == 2) {
             std::rethrow_exception(std::get<2>(result_));
         }
+        on_resume();
         if constexpr (!std::is_void_v<T>) {
             return std::get<1>(result_);
         }
@@ -56,6 +51,10 @@ struct promise: promise_base {
         return waiter_.done();
     }
 
+    void cancel() override {
+        return cancel_fn_();
+    }
+
 private:
     std::experimental::coroutine_handle<> waiter_;
     std::variant<
@@ -63,4 +62,5 @@ private:
         std::conditional_t<std::is_void_v<T>, std::monostate, T>,
         std::exception_ptr
     > result_;
+    std::function<void ()> cancel_fn_;
 };

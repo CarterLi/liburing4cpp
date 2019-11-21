@@ -8,14 +8,14 @@
 #include <variant>
 #include <array>
 
-struct promise_base;
-struct task_base;
+#include "cancelable.hpp"
+
 template <typename T = void>
 struct task;
 
 // only for internal usage
 template <typename T>
-struct task_promise_base {
+struct task_promise_base: cancelable_promise_base {
     task<T> get_return_object();
     auto initial_suspend() { return std::experimental::suspend_never(); }
     auto final_suspend() noexcept {
@@ -49,16 +49,11 @@ protected:
         std::conditional_t<std::is_void_v<T>, std::monostate, T>,
         std::exception_ptr
     > result_;
-    std::variant<
-        std::monostate,
-        task_base *,
-        promise_base *
-    > callee_;
 };
 
 // only for internal usage
 template <typename T>
-struct task_promise: task_promise_base<T> {
+struct task_promise final: task_promise_base<T> {
     using task_promise_base<T>::result_;
     using task_promise_base<T>::callee_;
 
@@ -69,19 +64,10 @@ struct task_promise: task_promise_base<T> {
 };
 
 template <>
-struct task_promise<void>: task_promise_base<void> {
+struct task_promise<void> final: task_promise_base<void> {
     void return_void() {
         result_.template emplace<1>(std::monostate {});
     }
-};
-
-// This is NOT a polymorphic class, its destructor is NOT virtual
-struct task_base: std::experimental::suspend_always {
-    task_base() = default;
-    task_base(const task_base&) = delete;
-    task_base& operator =(const task_base&) = delete;
-
-    virtual void cancel() = 0;
 };
 
 /**
@@ -89,17 +75,27 @@ struct task_base: std::experimental::suspend_always {
  * @warning do NOT discard this object when returned by some function, or UB WILL happen
  */
 template <typename T>
-struct task final: task_base {
+struct task final: std::experimental::suspend_always, cancelable {
     using promise_type = task_promise<T>;
     using handle_t = std::experimental::coroutine_handle<promise_type>;
 
+    task(const task&) = delete;
+    task& operator =(const task&) = delete;
+
     template <typename TT>
     void await_suspend(std::experimental::coroutine_handle<task_promise<TT>> caller) noexcept {
-        caller.promise().callee_ = this;
+        on_suspended(&caller.promise().callee_);
         coro_.promise().waiter_ = caller;
     }
 
     T await_resume() const {
+        on_resume();
+        return get_result();
+    }
+
+    /** Get the result hold by this task */
+    T get_result() const {
+        assert(done());
         auto& result_ = coro_.promise().result_;
         assert(result_.index() > 0);
         if (result_.index() == 2) {
@@ -108,12 +104,6 @@ struct task final: task_base {
         if constexpr (!std::is_void_v<T>) {
             return std::get<1>(result_);
         }
-    }
-
-    /** Get the result hold by this task */
-    T get_result() const {
-        assert(done());
-        return await_resume();
     }
 
     /** Get is the coroutine done */
@@ -159,19 +149,13 @@ struct task final: task_base {
     // Only for internal usage
     template <typename Fn>
     void then(Fn&& fn) {
-        auto& p = coro_.promise();
-        assert(p.then || "Fn `then` has been attached");
-        p.then = std::move(fn);
+        assert(coro_.promise().then || "Fn `then` has been attached");
+        coro_.promise().then = std::move(fn);
     }
 
     void cancel() override {
-        auto& callee = coro_.promise().callee_;
-        assert(callee.index() != 0);
-        if (callee.index() == 1) {
-            return std::get<1>(callee)->cancel();
-        } else {
-            return std::get<2>(callee)->cancel();
-        }
+        assert(coro_.promise().callee_);
+        coro_.promise().callee_->cancel();
     }
 
 private:
