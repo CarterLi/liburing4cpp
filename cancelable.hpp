@@ -1,5 +1,10 @@
 #pragma once
 
+template <typename T>
+struct task;
+template <typename T>
+struct promise;
+
 /** Indicate a class is cancelable
  * @warning This is NOT a polymorphic class, its destructor is NOT virtual
  */
@@ -26,6 +31,11 @@ protected:
 };
 
 struct cancelable_promise_base {
+    template <typename T>
+    friend struct task;
+    template <typename T>
+    friend struct promise;
+
 protected:
     cancelable* callee_ = nullptr;
 };

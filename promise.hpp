@@ -58,7 +58,7 @@ struct promise final: std::experimental::suspend_always, cancelable {
      * @throw (std::bad_function_call) If the operation doesn't support cancellation
      */
     void cancel() override {
-        return cancel_fn_();
+        return cancel_fn_(this);
     }
 
 private:
@@ -68,5 +68,5 @@ private:
         std::conditional_t<std::is_void_v<T>, std::monostate, T>,
         std::exception_ptr
     > result_;
-    std::function<void ()> cancel_fn_;
+    std::function<void (promise* self)> cancel_fn_;
 };

@@ -87,6 +87,7 @@
     "map": "cpp",
     "__tree": "cpp",
     "compare": "cpp",
-    "__functional_03": "cpp"
+    "__functional_03": "cpp",
+    "filesystem": "cpp"
   }
 }

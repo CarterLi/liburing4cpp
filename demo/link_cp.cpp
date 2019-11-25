@@ -5,7 +5,6 @@
 #include <vector>
 
 #include "io_service.hpp"
-#include "when.hpp"
 
 #define BS	(8*1024)
 
@@ -31,22 +30,18 @@ static off_t get_file_size(int fd) {
 
 task<> copy_file(io_service& service, off_t insize) {
     std::vector<char> buf(BS, '\0');
-    std::vector<task<int>> tmp;
-    tmp.reserve(insize / BS);
     service.register_buffers({ to_iov(buf.data(), buf.size()) });
     on_scope_exit unreg_bufs([&]() { service.unregister_buffers(); });
 
     off_t offset = 0;
     for (; offset < insize - BS; offset += BS) {
-        // We MUST push these tasks into a vector to preventing them from early destruction.
-        tmp.push_back(service.read_fixed(0, buf.data(), buf.size(), offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK));
-        tmp.push_back(service.write_fixed(1, buf.data(), buf.size(), offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK));
+        service.read_fixed(0, buf.data(), buf.size(), offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK);
+        service.write_fixed(1, buf.data(), buf.size(), offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK);
     }
 
-    int left = co_await service.read_fixed(0, buf.data(), buf.size(), offset, 0, IOSQE_FIXED_FILE);
-    if (left) {
-        co_await service.write_fixed(1, buf.data(), left, offset, 0, IOSQE_FIXED_FILE);
-    }
+    int left = insize - BS;
+    service.read_fixed(0, buf.data(), left, offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK);
+    co_await service.write_fixed(1, buf.data(), left, offset, 0, IOSQE_FIXED_FILE);
 }
 
 int main(int argc, char *argv[]) {
