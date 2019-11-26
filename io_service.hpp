@@ -293,6 +293,13 @@ public:
 #endif
     }
 
+    /** Initiate a connection on a socket asynchronously
+     * @see connect(2)
+     * @see io_uring_enter(2) IORING_OP_CONNECT
+     * @param iflags IOSQE_* flags
+     * @param command text will be thrown when fail
+     * @return a task object for awaiting
+     */
     task<int> connect(
         int fd,
         sockaddr *addr,
