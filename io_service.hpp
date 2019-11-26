@@ -268,7 +268,6 @@ public:
         return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL, command);
     }
 
-#if defined(USE_NEW_IO_URING_FEATURES)
     /** Accept a connection on a socket asynchronously
      * @see accept4(2)
      * @see io_uring_enter(2) IORING_OP_ACCEPT
@@ -284,9 +283,32 @@ public:
         uint8_t iflags = 0,
         std::string_view command = "accept"
     ) {
+#ifdef USE_NEW_IO_URING_FEATURES
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_accept(sqe, fd, addr, addrlen, flags);
         return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL, command);
+#else
+        co_await poll(fd, POLLIN, iflags, command);
+        co_return ::accept4(fd, addr, addrlen, flags);
+#endif
+    }
+
+    task<int> connect(
+        int fd,
+        sockaddr *addr,
+        socklen_t addrlen,
+        int flags = 0,
+        uint8_t iflags = 0,
+        std::string_view command = "accept"
+    ) {
+#ifdef USE_NEW_IO_URING_FEATURES
+        auto* sqe = io_uring_get_sqe_safe(&ring);
+        io_uring_prep_connect(sqe, fd, addr, addrlen);
+        return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL, command);
+#else
+        co_await poll(fd, POLLIN, iflags, command);
+        co_return ::connect(fd, addr, addrlen);
+#endif
     }
 
     /** Wait for specified duration asynchronously
@@ -301,36 +323,20 @@ public:
         uint8_t iflags = 0,
         std::string_view command = "delay"
     ) {
+#ifdef USE_NEW_IO_URING_FEATURES
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_timeout(sqe, &ts, 0, 0);
         return await_work(sqe, iflags, IORING_OP_TIMEOUT_REMOVE, command);
-    }
 #else
-    task<int> accept(
-        int fd,
-        sockaddr *addr,
-        socklen_t *addrlen,
-        int flags = 0,
-        uint8_t iflags = 0,
-        std::string_view command = "accept"
-    ) {
-        co_await poll(fd, POLLIN, iflags, command);
-        co_return accept4(fd, addr, addrlen, flags);
-    }
-
-    task<int> delay(
-        __kernel_timespec ts,
-        uint8_t iflags = 0, // IOSQE_IO_LINK doesn't work here since `timerfd_settime` is called before polling
-        std::string_view command = "delay"
-    ) {
         itimerspec exp = { {}, { ts.tv_sec, ts.tv_nsec } };
         auto tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
         if (timerfd_settime(tfd, 0, &exp, nullptr)) panic("timerfd");
         on_scope_exit closefd([=]() { close(tfd); });
         // Insure that tfd is NOT closed before poll is truly finished
+        // IOSQE_IO_LINK doesn't work here since `timerfd_settime` is called before polling
         co_return co_await poll(tfd, POLLIN, iflags, command);
-    }
 #endif
+    }
 
     task<int> delay(
         std::chrono::nanoseconds dur,
