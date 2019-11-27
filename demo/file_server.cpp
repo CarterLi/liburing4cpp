@@ -148,10 +148,14 @@ int main(int argc, char* argv[]) {
 
     // Event loop
     while (!work.done()) {
-        auto [promise, res] = service.wait_event();
+        if (auto some = service.timedwait_event(1s)) {
+            auto [promise, res] = some.value();
 
-        // Found a finished event, go back to its coroutine.
-        promise->resolve(res);
+            // Found a finished event, go back to its coroutine.
+            promise->resolve(res);
+        } else {
+            fmt::print("PING!\n");
+        }
     }
 
     work.get_result();

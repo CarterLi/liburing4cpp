@@ -198,22 +198,23 @@ public:
         return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL, command);
     }
 
-#define DEFINE_AWAIT_OP(operation)                                       \
-    template <unsigned int N>                                            \
-    task<int> operation(                                                 \
-        int sockfd,                                                      \
-        iovec (&&ioves) [N],                                             \
-        uint32_t flags,                                                  \
-        uint8_t iflags = 0,                                              \
-        std::string_view command = #operation                            \
-    ) {                                                                  \
-        msghdr msg = {                                                   \
-            .msg_iov = ioves,                                            \
-            .msg_iovlen = N,                                             \
-        };                                                               \
-        auto* sqe = io_uring_get_sqe_safe(&ring);                        \
-        io_uring_prep_##operation(sqe, sockfd, &msg, flags);             \
-        return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL, command); \
+#define DEFINE_AWAIT_OP(operation)                                                   \
+    template <unsigned int N>                                                        \
+    task<int> operation(                                                             \
+        int sockfd,                                                                  \
+        iovec (&&ioves) [N],                                                         \
+        uint32_t flags,                                                              \
+        uint8_t iflags = 0,                                                          \
+        std::string_view command = #operation                                        \
+    ) {                                                                              \
+        msghdr msg = {                                                               \
+            .msg_iov = ioves,                                                        \
+            .msg_iovlen = N,                                                         \
+        };                                                                           \
+        auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
+        io_uring_prep_##operation(sqe, sockfd, &msg, flags);                         \
+        /* See delay */                                                              \
+        co_return co_await await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL, command); \
     }
 
     /** Receive a message from a socket asynchronously
@@ -330,19 +331,13 @@ public:
         uint8_t iflags = 0,
         std::string_view command = "delay"
     ) {
-#ifdef USE_NEW_IO_URING_FEATURES
         auto* sqe = io_uring_get_sqe_safe(&ring);
+        // Everytime we pass pointers into other function,
+        // we MUST use co_return co_await to insure that variable
+        // isn't destructed before await_work truly returns
         io_uring_prep_timeout(sqe, &ts, 0, 0);
-        return await_work(sqe, iflags, IORING_OP_TIMEOUT_REMOVE, command);
-#else
-        itimerspec exp = { {}, { ts.tv_sec, ts.tv_nsec } };
-        auto tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
-        if (timerfd_settime(tfd, 0, &exp, nullptr)) panic("timerfd");
-        on_scope_exit closefd([=]() { close(tfd); });
-        // Insure that tfd is NOT closed before poll is truly finished
-        // IOSQE_IO_LINK doesn't work here since `timerfd_settime` is called before polling
-        co_return co_await poll(tfd, POLLIN, iflags, command);
-#endif
+        // IORING_OP_TIMEOUT_REMOVE is supported in Linux 5.5+ only, not in Linux 5.4.x
+        co_return co_await await_work(sqe, iflags, IORING_OP_TIMEOUT_REMOVE, command);
     }
 
     task<int> delay(

@@ -6,9 +6,9 @@ Originally named liburing-http-demo ( this project was originally started for de
 
 ## Requirements
 
-Requires the latest stable linux kernel ( currently 5.3 ). Since [io_uring](https://git.kernel.dk/cgit/liburing/) is in active development, we will drop old kernel support when every new linux kernel version is released ( before the next LTS version is released, maybe ).
+Requires the latest stable linux kernel ( currently 5.4 ). Since [io_uring](https://git.kernel.dk/cgit/liburing/) is in active development, we will drop old kernel support when every new linux kernel version is released ( before the next LTS version is released, maybe ).
 
-Tested: `Linux archlinux-pc 5.3.13-arch1-1 #1 SMP PREEMPT Sun, 24 Nov 2019 10:15:50 +0000 x86_64 GNU/Linux` with `clang-9.0.0`
+Tested: `Linux archlinux-pc 5.4.0-arch1-1 #1 SMP PREEMPT Mon, 25 Nov 2019 22:31:57 +0000 x86_64 GNU/Linux` with `clang-9.0.0`
 
 ## Project Structure
 
