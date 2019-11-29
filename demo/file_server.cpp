@@ -74,10 +74,10 @@ task<> serve(io_service& service, int clientfd, int dirfd) {
     fmt::print("Serving connection, sockfd {}; number of running coroutines: {}\n",
          clientfd, runningCoroutines);
 
-    std::string_view buf_view;
     std::array<char, BUF_SIZE> buffer;
     int res = co_await service.recvmsg(clientfd, { to_iov(buffer) }, MSG_NOSIGNAL);
-    buf_view = std::string_view(buffer.data(), size_t(res));
+
+    std::string_view buf_view = std::string_view(buffer.data(), size_t(res));
 
     // We only handle GET requests, for simplification
     if (buf_view.compare(0, 3, "GET") == 0) {
@@ -124,7 +124,7 @@ int main(int argc, char* argv[]) {
     if (dirfd < 0) panic("open dir");
     on_scope_exit closedir([=]() { close(dirfd); });
 
-    int sockfd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) panic("socket creation");
     on_scope_exit closesock([=]() { close(sockfd); });
 
