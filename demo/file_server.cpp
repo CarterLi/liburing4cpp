@@ -57,7 +57,7 @@ task<> http_send_file(io_service& service, std::string filename, int clientfd, i
                 service.readv(infd, { iov }, offset, IOSQE_IO_LINK),
                 service.sendmsg(clientfd, { iov }, MSG_NOSIGNAL | MSG_MORE),
             });
-            co_await service.delay({ 1, 0 }); // For debugging
+            co_await service.delay(1s); // For debugging
         }
         if (st.st_size > offset) {
             iov.iov_len = size_t(st.st_size - offset);
@@ -154,7 +154,7 @@ int main(int argc, char* argv[]) {
             // Found a finished event, go back to its coroutine.
             promise->resolve(res);
         } else {
-            fmt::print("PING!\n");
+            fmt::print("{}: PING!\n", std::chrono::system_clock::now().time_since_epoch().count() / 1000'000);
         }
     }
 

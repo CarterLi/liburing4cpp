@@ -45,7 +45,7 @@ task<> start_work(io_service& service, const char* hostname) {
 
 int main(int argc, char* argv[]) {
     if (argc != 2) {
-        fmt::print("Usage: {} <URL>\n", argv[1]);
+        fmt::print("Usage: {} <URL>\n", argv[0]);
         return 1;
     }
 

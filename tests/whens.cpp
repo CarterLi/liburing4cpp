@@ -37,8 +37,11 @@ int main() {
         fmt::print("cancel\n");
         auto t = delayAndPrint(1);
         t.cancel();
-        co_await t;
-        fmt::print("cancel end\n");
+        try {
+            co_await t;
+        } catch (...) {
+            fmt::print("cancel end\n");
+        }
     }(service);
 
     // Event loop

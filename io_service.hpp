@@ -10,6 +10,8 @@
 #include "promise.hpp"
 #include "task.hpp"
 
+#define USE_NEW_IO_URING_FEATURES 0
+
 /** Helper functions to fill an iovec struct */
 constexpr inline iovec to_iov(void *buf, size_t size) noexcept {
     return { buf, size };
@@ -45,7 +47,6 @@ constexpr inline __kernel_timespec dur2ts(std::chrono::nanoseconds dur) noexcept
 [[noreturn]]
 void panic(std::string_view sv, int err = 0) {
     if (err == 0) err = errno;
-    fprintf(stderr, "errno: %d\n", err);
     if (err == EPIPE) {
         throw std::runtime_error("Broken pipe: client socket is closed");
     }
@@ -284,7 +285,7 @@ public:
         uint8_t iflags = 0,
         std::string_view command = "accept"
     ) {
-#ifdef USE_NEW_IO_URING_FEATURES
+#if USE_NEW_IO_URING_FEATURES
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_accept(sqe, fd, addr, addrlen, flags);
         return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL, command);
@@ -307,9 +308,9 @@ public:
         socklen_t addrlen,
         int flags = 0,
         uint8_t iflags = 0,
-        std::string_view command = "accept"
+        std::string_view command = "connect"
     ) {
-#ifdef USE_NEW_IO_URING_FEATURES
+#if USE_NEW_IO_URING_FEATURES
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_connect(sqe, fd, addr, addrlen);
         return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL, command);
@@ -331,6 +332,7 @@ public:
         uint8_t iflags = 0,
         std::string_view command = "delay"
     ) {
+#if USE_NEW_IO_URING_FEATURES
         auto* sqe = io_uring_get_sqe_safe(&ring);
         // Everytime we pass pointers into other function,
         // we MUST use co_return co_await to insure that variable
@@ -338,6 +340,15 @@ public:
         io_uring_prep_timeout(sqe, &ts, 0, 0);
         // IORING_OP_TIMEOUT_REMOVE is supported in Linux 5.5+ only, not in Linux 5.4.x
         co_return co_await await_work(sqe, iflags, IORING_OP_TIMEOUT_REMOVE, command);
+#else
+        itimerspec exp = { {}, { ts.tv_sec, ts.tv_nsec } };
+        auto tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+        if (timerfd_settime(tfd, 0, &exp, nullptr)) panic("timerfd");
+        on_scope_exit closefd([=]() { close(tfd); });
+        // Insure that tfd is NOT closed before poll is truly finished
+        // IOSQE_IO_LINK doesn't work here since `timerfd_settime` is called before polling
+        co_return co_await poll(tfd, POLLIN, iflags, command);
+#endif
     }
 
     task<int> delay(
@@ -356,9 +367,9 @@ private:
         std::string_view command
     ) {
         promise<int> p([cancel_opcode = cancel_opcode, pring = &ring] (promise<int>* self) {
+            // For Linux 5.4 and below, canceled operations won't return -ECANCELED, thus no exceptions will be thrown
             io_uring_sqe *sqe = io_uring_get_sqe_safe(pring);
             io_uring_prep_rw(cancel_opcode, sqe, -1, self, 0, 0);
-            io_uring_submit(pring);
         });
         io_uring_sqe_set_flags(sqe, iflags);
         io_uring_sqe_set_data(sqe, &p);
@@ -396,8 +407,7 @@ public:
      */
     [[nodiscard]]
     std::optional<std::pair<promise<int> *, int>> peek_event() {
-        io_uring_cqe* cqe;
-        while (io_uring_peek_cqe(&ring, &cqe) >= 0 && cqe) {
+        for (io_uring_cqe* cqe; io_uring_peek_cqe(&ring, &cqe) >= 0 && cqe; ) {
             io_uring_cqe_seen(&ring, cqe);
 
             if (auto* coro = static_cast<promise<int> *>(io_uring_cqe_get_data(cqe))) {
@@ -416,20 +426,19 @@ public:
     [[nodiscard]]
     std::optional<std::pair<promise<int> *, int>> timedwait_event(__kernel_timespec timeout) {
         if  (auto result = peek_event()) return result;
-
-        io_uring_cqe* cqe;
-        while (io_uring_wait_cqe_timeout(&ring, &cqe, &timeout) >= 0 && cqe) {
+        if (io_uring_cqe* cqe; io_uring_wait_cqe_timeout(&ring, &cqe, &timeout) >= 0 && cqe) {
             io_uring_cqe_seen(&ring, cqe);
 
             if (auto* coro = static_cast<promise<int> *>(io_uring_cqe_get_data(cqe))) {
                 return std::make_pair(coro, cqe->res);
             }
+            return peek_event();
         }
         return std::nullopt;
     }
 
     [[nodiscard]]
-    std::optional<std::pair<promise<int> *, int>> timedwait_event(std::chrono::nanoseconds dur) {
+    inline std::optional<std::pair<promise<int> *, int>> timedwait_event(std::chrono::nanoseconds dur) {
         return timedwait_event(dur2ts(dur));
     }
 
