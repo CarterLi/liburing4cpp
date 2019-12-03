@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include "task.hpp"
 
 /** Return a task that will be finished when all given tasks are finished
