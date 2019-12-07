@@ -1,4 +1,7 @@
+#include <ctime>
 #include <fmt/format.h> // https://github.com/fmtlib/fmt
+
+#define USE_NEW_IO_URING_FEATURES 1
 
 #include "when.hpp"
 #include "io_service.hpp"
@@ -9,39 +12,44 @@ int main() {
     io_service service;
 
     auto work = [] (io_service& service) -> task<> {
-        auto delayAndPrint = [&] (int second) -> task<> {
-            co_await service.delay({ second, 0 });
-            fmt::print("delayed: {}s\n", second);
+        auto delayAndPrint = [&] (int second, uint8_t iflags = 0) -> task<> {
+            co_await service.delay({ second, 0 }, iflags);
+            fmt::print("{}: delayed {}s\n", ::time(nullptr), second);
         };
 
-        fmt::print("starting\n");
-        fmt::print("in sequence\n");
+        fmt::print("in sequence start\n");
         co_await delayAndPrint(1);
         co_await delayAndPrint(2);
         co_await delayAndPrint(3);
-        fmt::print("in sequence end\n\n");
-        fmt::print("when any\n");
+        fmt::print("in sequence end, should wait 6s\n\n");
+        fmt::print("when any start\n");
         co_await when_any(std::array {
             delayAndPrint(1),
             delayAndPrint(2),
             delayAndPrint(3),
         });
-        fmt::print("when any end\n\n");
-        fmt::print("when all\n");
+        fmt::print("when any end, should wait 1s\n\n");
+        fmt::print("when all start\n");
         co_await when_all(std::array {
             delayAndPrint(1),
             delayAndPrint(2),
             delayAndPrint(3),
         });
-        fmt::print("when all end\n\n");
-        fmt::print("cancel\n");
+        fmt::print("when all end, should wait 3s\n\n");
+        fmt::print("cancel start\n");
         auto t = delayAndPrint(1);
         t.cancel();
         try {
             co_await t;
-        } catch (...) {
-            fmt::print("cancel end\n");
+        } catch (std::exception& ex) {
+            fmt::print("exception cached: {}; it's expected\n", ex.what());
         }
+        fmt::print("cancel end, should not wait\n");
+        fmt::print("io link start\n");
+        delayAndPrint(1, IOSQE_IO_LINK);
+        delayAndPrint(2, IOSQE_IO_LINK);
+        co_await delayAndPrint(3);
+        fmt::print("io link end, should wait 6s\n");
     }(service);
 
     // Event loop

@@ -2,15 +2,13 @@
 #include <functional>
 #include <system_error>
 #include <chrono>
+#include <sys/poll.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
 #include <liburing.h>   // http://git.kernel.dk/liburing
-#include <sys/poll.h>
 
 #include "promise.hpp"
 #include "task.hpp"
-
-#define USE_NEW_IO_URING_FEATURES 0
 
 /** Helper functions to fill an iovec struct */
 constexpr inline iovec to_iov(void *buf, size_t size) noexcept {
@@ -91,18 +89,18 @@ public:
 
 public:
 
-#define DEFINE_AWAIT_OP(operation)                                       \
-    template <unsigned int N>                                            \
-    task<int> operation (                                                \
-        int fd,                                                          \
-        iovec (&&ioves) [N],                                             \
-        off_t offset,                                                    \
-        uint8_t iflags = 0,                                              \
-        std::string_view command = #operation                            \
-    ) {                                                                  \
-        auto* sqe = io_uring_get_sqe_safe(&ring);                        \
-        io_uring_prep_##operation(sqe, fd, ioves, N, offset);            \
-        return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL, command); \
+#define DEFINE_AWAIT_OP(operation)                                                   \
+    template <unsigned int N>                                                        \
+    task<int> operation (                                                            \
+        int fd,                                                                      \
+        iovec (&&ioves) [N],                                                         \
+        off_t offset,                                                                \
+        uint8_t iflags = 0,                                                          \
+        std::string_view command = #operation                                        \
+    ) {                                                                              \
+        auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
+        io_uring_prep_##operation(sqe, fd, ioves, N, offset);                        \
+        co_return co_await await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL, command); \
     }
 
     /** Read data into multiple buffers asynchronously
@@ -124,19 +122,19 @@ public:
     DEFINE_AWAIT_OP(writev)
 #undef DEFINE_AWAIT_OP
 
-#define DEFINE_AWAIT_OP(operation)                                                 \
-    task<int> operation (                                                          \
-        int fd,                                                                    \
-        void* buf,                                                                 \
-        unsigned nbytes,                                                           \
-        off_t offset,                                                              \
-        int buf_index,                                                             \
-        uint8_t iflags = 0,                                                        \
-        std::string_view command = #operation                                      \
-    ) {                                                                            \
-        auto* sqe = io_uring_get_sqe_safe(&ring);                                  \
-        io_uring_prep_##operation(sqe, fd, buf, nbytes, offset, buf_index);        \
-        return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL, command);           \
+#define DEFINE_AWAIT_OP(operation)                                                   \
+    task<int> operation (                                                            \
+        int fd,                                                                      \
+        void* buf,                                                                   \
+        unsigned nbytes,                                                             \
+        off_t offset,                                                                \
+        int buf_index,                                                               \
+        uint8_t iflags = 0,                                                          \
+        std::string_view command = #operation                                        \
+    ) {                                                                              \
+        auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
+        io_uring_prep_##operation(sqe, fd, buf, nbytes, offset, buf_index);          \
+        co_return co_await await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL, command); \
     }
 
     /** Read data into a fixed buffer asynchronously
@@ -209,12 +207,11 @@ public:
         std::string_view command = #operation                                        \
     ) {                                                                              \
         msghdr msg = {                                                               \
-            .msg_iov = ioves,                                                        \
+            .msg_iov = std::move(ioves),                                             \
             .msg_iovlen = N,                                                         \
         };                                                                           \
         auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
         io_uring_prep_##operation(sqe, sockfd, &msg, flags);                         \
-        /* See delay */                                                              \
         co_return co_await await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL, command); \
     }
 
@@ -342,6 +339,7 @@ public:
         co_return co_await await_work(sqe, iflags, IORING_OP_TIMEOUT_REMOVE, command);
 #else
         itimerspec exp = { {}, { ts.tv_sec, ts.tv_nsec } };
+        // IOSQE_IO_LINK won't work here because the timer is created before the fd is polled
         auto tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
         if (timerfd_settime(tfd, 0, &exp, nullptr)) panic("timerfd");
         on_scope_exit closefd([=]() { close(tfd); });
