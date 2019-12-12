@@ -36,7 +36,7 @@ task<> http_send_file(io_service& service, std::string filename, int clientfd, i
 
     if (struct stat st; infd < 0 || fstat(infd, &st) || !S_ISREG(st.st_mode)) {
         fmt::print("{}: file not found!\n", filename);
-        co_await service.sendmsg(clientfd, { to_iov(http_404_hdr) }, MSG_NOSIGNAL);
+        co_await service.sendmsg(clientfd, to_iov(http_404_hdr), MSG_NOSIGNAL);
     } else {
         auto contentType = [filename_view = std::string_view(filename)]() {
             auto extension = filename_view.substr(filename_view.find_last_of('.') + 1);
@@ -45,25 +45,25 @@ task<> http_send_file(io_service& service, std::string filename, int clientfd, i
             return iter->second;
         }();
 
-        co_await service.sendmsg(clientfd, {
-            to_iov(fmt::format("HTTP/1.1 200 OK\r\nContent-type: {}\r\nContent-Length: {}\r\n\r\n", contentType, st.st_size)),
-        }, MSG_NOSIGNAL | MSG_MORE);
+        co_await service.sendmsg(clientfd, to_iov(
+            fmt::format("HTTP/1.1 200 OK\r\nContent-type: {}\r\nContent-Length: {}\r\n\r\n", contentType, st.st_size)
+        ), MSG_NOSIGNAL | MSG_MORE);
 
         off_t offset = 0;
         std::array<char, BUF_SIZE> filebuf;
         auto iov = to_iov(filebuf);
         for (; st.st_size - offset > BUF_SIZE; offset += BUF_SIZE) {
             co_await when_all(std::array {
-                service.readv(infd, { iov }, offset, IOSQE_IO_LINK),
-                service.sendmsg(clientfd, { iov }, MSG_NOSIGNAL | MSG_MORE),
+                service.readv(infd, iov, offset, IOSQE_IO_LINK),
+                service.sendmsg(clientfd, iov, MSG_NOSIGNAL | MSG_MORE),
             });
             co_await service.delay(1s); // For debugging
         }
         if (st.st_size > offset) {
             iov.iov_len = size_t(st.st_size - offset);
             co_await when_all(std::array {
-                service.readv(infd, { iov }, offset, IOSQE_IO_LINK),
-                service.sendmsg(clientfd, { iov }, MSG_NOSIGNAL),
+                service.readv(infd, iov, offset, IOSQE_IO_LINK),
+                service.sendmsg(clientfd, iov, MSG_NOSIGNAL),
             });
         }
     }
@@ -75,7 +75,7 @@ task<> serve(io_service& service, int clientfd, int dirfd) {
          clientfd, runningCoroutines);
 
     std::array<char, BUF_SIZE> buffer;
-    int res = co_await service.recvmsg(clientfd, { to_iov(buffer) }, MSG_NOSIGNAL);
+    int res = co_await service.recvmsg(clientfd, to_iov(buffer), MSG_NOSIGNAL);
 
     std::string_view buf_view = std::string_view(buffer.data(), size_t(res));
 
@@ -86,7 +86,7 @@ task<> serve(io_service& service, int clientfd, int dirfd) {
         co_await http_send_file(service, file, clientfd, dirfd);
     } else {
         fmt::print("unsupported request: {}\n", buf_view);
-        co_await service.sendmsg(clientfd, { to_iov(http_400_hdr) }, MSG_NOSIGNAL);
+        co_await service.sendmsg(clientfd, to_iov(http_400_hdr), MSG_NOSIGNAL);
     }
 }
 

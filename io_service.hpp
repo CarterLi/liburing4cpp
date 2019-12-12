@@ -6,6 +6,7 @@
 #include <sys/timerfd.h>
 #include <unistd.h>
 #include <liburing.h>   // http://git.kernel.dk/liburing
+#include <execinfo.h>
 
 #include "promise.hpp"
 #include "task.hpp"
@@ -44,6 +45,19 @@ constexpr inline __kernel_timespec dur2ts(std::chrono::nanoseconds dur) noexcept
  */
 [[noreturn]]
 void panic(std::string_view sv, int err = 0) {
+#ifndef NDEBUG
+    // https://stackoverflow.com/questions/77005/how-to-automatically-generate-a-stacktrace-when-my-program-crashes
+    void *array[32];
+    size_t size;
+
+    // get void*'s for all entries on the stack
+    size = backtrace(array, 32);
+
+    // print out all the frames to stderr
+    fprintf(stderr, "Error: errno %d:\n", err);
+    backtrace_symbols_fd(array, size, STDERR_FILENO);
+#endif
+
     if (err == 0) err = errno;
     if (err == EPIPE) {
         throw std::runtime_error("Broken pipe: client socket is closed");
@@ -90,17 +104,27 @@ public:
 public:
 
 #define DEFINE_AWAIT_OP(operation)                                                   \
-    template <unsigned int N>                                                        \
-    task<int> operation (                                                            \
+    task<int> operation(                                                             \
         int fd,                                                                      \
-        iovec (&&ioves) [N],                                                         \
+        iovec* iovecs,                                                               \
+        unsigned nr_vecs,                                                            \
         off_t offset,                                                                \
         uint8_t iflags = 0,                                                          \
         std::string_view command = #operation                                        \
     ) {                                                                              \
         auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
-        io_uring_prep_##operation(sqe, fd, ioves, N, offset);                        \
-        co_return co_await await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL, command); \
+        io_uring_prep_##operation(sqe, fd, iovecs, nr_vecs, offset);                 \
+        return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL, command);             \
+    }                                                                                \
+                                                                                     \
+    task<int> operation(                                                             \
+        int fd,                                                                      \
+        iovec iov,                                                                   \
+        off_t offset,                                                                \
+        uint8_t iflags = 0,                                                          \
+        std::string_view command = #operation                                        \
+    ) {                                                                              \
+        co_return co_await operation(fd, &iov, 1, offset, iflags, command);          \
     }
 
     /** Read data into multiple buffers asynchronously
@@ -123,7 +147,7 @@ public:
 #undef DEFINE_AWAIT_OP
 
 #define DEFINE_AWAIT_OP(operation)                                                   \
-    task<int> operation (                                                            \
+    task<int> operation(                                                             \
         int fd,                                                                      \
         void* buf,                                                                   \
         unsigned nbytes,                                                             \
@@ -198,21 +222,30 @@ public:
     }
 
 #define DEFINE_AWAIT_OP(operation)                                                   \
-    template <unsigned int N>                                                        \
     task<int> operation(                                                             \
         int sockfd,                                                                  \
-        iovec (&&ioves) [N],                                                         \
+        msghdr* msg,                                                                 \
+        uint32_t flags,                                                              \
+        uint8_t iflags = 0,                                                          \
+        std::string_view command = #operation                                        \
+    ) {                                                                              \
+        auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
+        io_uring_prep_##operation(sqe, sockfd, msg, flags);                          \
+        return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL, command);             \
+    }                                                                                \
+                                                                                     \
+    task<int> operation(                                                             \
+        int sockfd,                                                                  \
+        iovec iov,                                                                   \
         uint32_t flags,                                                              \
         uint8_t iflags = 0,                                                          \
         std::string_view command = #operation                                        \
     ) {                                                                              \
         msghdr msg = {                                                               \
-            .msg_iov = std::move(ioves),                                             \
-            .msg_iovlen = N,                                                         \
+            .msg_iov = &iov,                                                         \
+            .msg_iovlen = 1,                                                         \
         };                                                                           \
-        auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
-        io_uring_prep_##operation(sqe, sockfd, &msg, flags);                         \
-        co_return co_await await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL, command); \
+        co_return co_await operation(sockfd, &msg, flags, iflags, command);          \
     }
 
     /** Receive a message from a socket asynchronously
