@@ -11,18 +11,16 @@
 static off_t get_file_size(int fd) {
 	struct stat st;
 
-	if (fstat(fd, &st) < 0) panic("fstat");
+	fstat(fd, &st) | panic_on_err("fstat", true);
 
 	if (__builtin_expect(S_ISREG(st.st_mode), true)) {
 		return st.st_size;
 	}
 
     if (S_ISBLK(st.st_mode)) {
-		if (unsigned long long bytes; ioctl(fd, BLKGETSIZE64, &bytes) < 0) {
-            panic("ioctl");
-        } else {
-			return bytes;
-        }
+        unsigned long long bytes;
+        ioctl(fd, BLKGETSIZE64, &bytes) | panic_on_err("ioctl", true);
+		return bytes;
 	}
 
     throw std::runtime_error("Unsupported file type");
@@ -35,13 +33,13 @@ task<> copy_file(io_service& service, off_t insize) {
 
     off_t offset = 0;
     for (; offset < insize - BS; offset += BS) {
-        service.read_fixed(0, buf.data(), buf.size(), offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK);
-        service.write_fixed(1, buf.data(), buf.size(), offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK);
+        service.read_fixed(0, buf.data(), buf.size(), offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK) | panic_on_err("read_fixed", false);
+        service.write_fixed(1, buf.data(), buf.size(), offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK) | panic_on_err("write_fixed", false);
     }
 
     int left = insize - BS;
-    service.read_fixed(0, buf.data(), left, offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK);
-    co_await service.write_fixed(1, buf.data(), left, offset, 0, IOSQE_FIXED_FILE);
+    service.read_fixed(0, buf.data(), left, offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK) | panic_on_err("read_fixed", false);
+    co_await service.write_fixed(1, buf.data(), left, offset, 0, IOSQE_FIXED_FILE) | panic_on_err("write_fixed", false);
 }
 
 int main(int argc, char *argv[]) {
@@ -50,12 +48,10 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    int infd = open(argv[1], O_RDONLY);
-    if (infd < 0) panic("open infile");
+    int infd = open(argv[1], O_RDONLY) | panic_on_err("open infile", true);
     on_scope_exit close_infd([=]() { close(infd); });
 
-    int outfd = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (outfd < 0) panic("open outfile");
+    int outfd = creat(argv[2], 0644) | panic_on_err("creat outfile", true);
     on_scope_exit close_outfd([=]() { close(outfd); });
 
     off_t insize = get_file_size(infd);

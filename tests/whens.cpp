@@ -1,7 +1,5 @@
-#include <ctime>
-#include <fmt/format.h> // https://github.com/fmtlib/fmt
-
-#define USE_NEW_IO_URING_FEATURES 1
+#include <chrono>
+#include <fmt/chrono.h> // https://github.com/fmtlib/fmt
 
 #include "when.hpp"
 #include "io_service.hpp"
@@ -13,8 +11,8 @@ int main() {
 
     auto work = [] (io_service& service) -> task<> {
         auto delayAndPrint = [&] (int second, uint8_t iflags = 0) -> task<> {
-            co_await service.delay({ second, 0 }, iflags);
-            fmt::print("{}: delayed {}s\n", ::time(nullptr), second);
+            co_await service.delay({ second, 0 }, iflags) | panic_on_err("delay", false);
+            fmt::print("{:%T}: delayed {}s\n", std::chrono::system_clock::now().time_since_epoch(), second);
         };
 
         fmt::print("in sequence start\n");
@@ -46,8 +44,8 @@ int main() {
         }
         fmt::print("cancel end, should not wait\n");
         fmt::print("io link start\n");
-        delayAndPrint(1, IOSQE_IO_LINK);
-        delayAndPrint(2, IOSQE_IO_LINK);
+        delayAndPrint(1, IOSQE_IO_LINK | IOSQE_IO_HARDLINK);
+        delayAndPrint(2, IOSQE_IO_LINK | IOSQE_IO_HARDLINK);
         co_await delayAndPrint(3);
         fmt::print("io link end, should wait 6s\n");
     }(service);

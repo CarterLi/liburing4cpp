@@ -8,12 +8,12 @@
       "name": "(lldb) Launch",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/demo/link_cp",
+      "program": "${workspaceFolder}/tests/whens",
       "args": [
         "mime_dicts.cpp",
         "mime_dicts.txt"
       ],
-      "cwd": "${workspaceFolder}/demo",
+      "cwd": "${workspaceFolder}/tests",
       "environment": [
         {
           "name": "LSAN_OPTIONS",
