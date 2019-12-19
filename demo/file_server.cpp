@@ -65,7 +65,7 @@ task<> http_send_file(io_service& service, std::string filename, int clientfd, i
                 service.readv(infd, iov, offset, IOSQE_IO_LINK) | panic_on_err("readv" , false),
                 service.sendmsg(clientfd, iov, MSG_NOSIGNAL | MSG_MORE) | panic_on_err("sendmsg", false),
             });
-            co_await service.delay(100ms) | panic_on_err("delay" , false); // For debugging
+            co_await service.timeout(100ms) | panic_on_err("timeout" , false); // For debugging
         }
         if (st.st_size > offset) {
             iov.iov_len = size_t(st.st_size - offset);

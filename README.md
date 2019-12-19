@@ -10,6 +10,25 @@ Requires the latest stable linux kernel ( currently 5.4 ). Since [io_uring](http
 
 Tested: `Linux archlinux-pc 5.4.0-arch1-1 #1 SMP PREEMPT Mon, 25 Nov 2019 22:31:57 +0000 x86_64 GNU/Linux` with `clang-9.0.0`
 
+## First glance
+
+```cpp
+#include "io_service.hpp"
+
+int main() {
+    io_service service;
+
+    auto work = [&] () -> task<> {
+        co_await service.writev(STDOUT_FILENO, to_iov("Hello world\n"), 0);
+    }();
+
+    while (!work.done()) {
+        auto [promise, res] = service.wait_event();
+        promise->resolve(res);
+    }
+}
+```
+
 ## Project Structure
 
 ### task.hpp

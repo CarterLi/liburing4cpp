@@ -11,7 +11,7 @@ int main() {
 
     auto work = [] (io_service& service) -> task<> {
         auto delayAndPrint = [&] (int second, uint8_t iflags = 0) -> task<> {
-            co_await service.delay({ second, 0 }, iflags) | panic_on_err("delay", false);
+            co_await service.timeout({ second, 0 }, iflags) | panic_on_err("timeout", false);
             fmt::print("{:%T}: delayed {}s\n", std::chrono::system_clock::now().time_since_epoch(), second);
         };
 

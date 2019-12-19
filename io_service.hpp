@@ -156,16 +156,14 @@ public:
      * @see preadv2(2)
      * @see io_uring_enter(2) IORING_OP_READV
      * @param iflags IOSQE_* flags
-     * @param command text will be thrown when fail
      * @return a task object for awaiting
      */
     DEFINE_AWAIT_OP(readv)
 
     /** Write data into multiple buffers asynchronously
-     * @see pwrite2(2)
+     * @see pwritev2(2)
      * @see io_uring_enter(2) IORING_OP_WRITEV
      * @param iflags IOSQE_* flags
-     * @param command text will be thrown when fail
      * @return a task object for awaiting
      */
     DEFINE_AWAIT_OP(writev)
@@ -190,7 +188,6 @@ public:
      * @see io_uring_enter(2) IORING_OP_READ_FIXED
      * @param buf_index the index of buffer registered with register_buffers
      * @param iflags IOSQE_* flags
-     * @param command text will be thrown when fail
      * @return a task object for awaiting
      */
     DEFINE_AWAIT_OP(read_fixed)
@@ -200,7 +197,6 @@ public:
      * @see io_uring_enter(2) IORING_OP_WRITE_FIXED
      * @param buf_index the index of buffer registered with register_buffers
      * @param iflags IOSQE_* flags
-     * @param command text will be thrown when fail
      * @return a task object for awaiting
      */
     DEFINE_AWAIT_OP(write_fixed)
@@ -210,7 +206,6 @@ public:
      * @see fsync(2)
      * @see io_uring_enter(2) IORING_OP_FSYNC
      * @param iflags IOSQE_* flags
-     * @param command text will be thrown when fail
      * @return a task object for awaiting
      */
     task<int> fsync(
@@ -227,7 +222,6 @@ public:
      * @see sync_file_range(2)
      * @see io_uring_enter(2) IORING_OP_SYNC_FILE_RANGE
      * @param iflags IOSQE_* flags
-     * @param command text will be thrown when fail
      * @return a task object for awaiting
      */
     task<int> sync_file_range(
@@ -269,7 +263,6 @@ public:
      * @see recvmsg(2)
      * @see io_uring_enter(2) IORING_OP_RECVMSG
      * @param iflags IOSQE_* flags
-     * @param command text will be thrown when fail
      * @return a task object for awaiting
      */
     DEFINE_AWAIT_OP(recvmsg)
@@ -278,7 +271,6 @@ public:
      * @see sendmsg(2)
      * @see io_uring_enter(2) IORING_OP_SENDMSG
      * @param iflags IOSQE_* flags
-     * @param command text will be thrown when fail
      * @return a task object for awaiting
      */
     DEFINE_AWAIT_OP(sendmsg)
@@ -288,7 +280,6 @@ public:
      * @see poll(2)
      * @see io_uring_enter(2)
      * @param iflags IOSQE_* flags
-     * @param command text will be thrown when fail
      * @return a task object for awaiting
      */
     task<int> poll(
@@ -304,7 +295,6 @@ public:
     /** Enqueue a NOOP command, which eventually acts like pthread_yield when awaiting
      * @see io_uring_enter(2) IORING_OP_NOP
      * @param iflags IOSQE_* flags
-     * @param command text will be thrown when fail
      * @return a task object for awaiting
      */
     task<int> yield(
@@ -319,7 +309,6 @@ public:
      * @see accept4(2)
      * @see io_uring_enter(2) IORING_OP_ACCEPT
      * @param iflags IOSQE_* flags
-     * @param command text will be thrown when fail
      * @return a task object for awaiting
      */
     task<int> accept(
@@ -343,7 +332,6 @@ public:
      * @see connect(2)
      * @see io_uring_enter(2) IORING_OP_CONNECT
      * @param iflags IOSQE_* flags
-     * @param command text will be thrown when fail
      * @return a task object for awaiting
      */
     task<int> connect(
@@ -367,10 +355,9 @@ public:
      * @see io_uring_enter(2) IORING_OP_TIMEOUT
      * @param ts initial expiration, timespec
      * @param iflags IOSQE_* flags
-     * @param command text will be thrown when fail
      * @return a task object for awaiting
      */
-    task<int> delay(
+    task<int> timeout(
         __kernel_timespec ts,
         uint8_t iflags = 0
     ) {
@@ -395,13 +382,18 @@ public:
 #endif
     }
 
-    task<int> delay(
+    task<int> timeout(
         std::chrono::nanoseconds dur,
         uint8_t iflags = 0
     ) {
-        return delay(dur2ts(dur), iflags);
+        return timeout(dur2ts(dur), iflags);
     }
 
+    /** Open and possibly create a file asynchronously
+     * @see io_uring_enter(2) IORING_OP_OPENAT
+     * @param iflags IOSQE_* flags
+     * @return a task object for awaiting
+     */
     task<int> openat(
         int dfd,
         const char *path,
@@ -418,6 +410,11 @@ public:
 #endif
     }
 
+    /** Close a file descriptor asynchronously
+     * @see io_uring_enter(2) IORING_OP_CLOSE
+     * @param iflags IOSQE_* flags
+     * @return a task object for awaiting
+     */
     task<int> close(
         int fd,
         uint8_t iflags = 0
@@ -431,6 +428,11 @@ public:
 #endif
     }
 
+    /** Get file status asynchronously
+     * @see io_uring_enter(2) IORING_OP_STATX
+     * @param iflags IOSQE_* flags
+     * @return a task object for awaiting
+     */
     task<int> statx(
         int dfd,
         const char *path,
