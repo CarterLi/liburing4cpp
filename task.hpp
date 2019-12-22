@@ -84,7 +84,7 @@ struct task final: std::experimental::suspend_always, cancelable {
 
     template <typename TT>
     void await_suspend(std::experimental::coroutine_handle<task_promise<TT>> caller) noexcept {
-        on_suspended(&caller.promise().callee_);
+        on_suspend(&caller.promise().callee_);
         coro_.promise().waiter_ = caller;
     }
 
@@ -133,7 +133,7 @@ struct task final: std::experimental::suspend_always, cancelable {
     ~task() {
         if (!coro_) return;
         if (!coro_.done()) {
-            coro_.promise().then = [coro_ = coro_] () mutable {
+            coro_.promise().then = [coro_ = coro_] () mutable noexcept {
                 auto p = coro_.promise();
                 // FIXME: Does this do right thing?
                 if (p.waiter_) {

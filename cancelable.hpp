@@ -12,7 +12,7 @@ struct cancelable {
     virtual void cancel() = 0;
 
 protected:
-    inline void on_suspended(cancelable** callee_ref) noexcept {
+    inline void on_suspend(cancelable** callee_ref) noexcept {
         *callee_ref = this;
 #ifndef NDEBUG
         callee_ref_ = callee_ref;

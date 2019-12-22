@@ -17,13 +17,15 @@
 #   define LINUX_KERNEL_VERSION 55
 #endif
 
-/** Helper functions to fill an iovec struct */
+/** Fill an iovec struct using buf & size */
 constexpr inline iovec to_iov(void *buf, size_t size) noexcept {
     return { buf, size };
 }
+/** Fill an iovec struct using string view */
 constexpr inline iovec to_iov(std::string_view sv) noexcept {
     return to_iov(const_cast<char *>(sv.data()), sv.size());
 }
+/** Fill an iovec struct using std::array */
 template <size_t N>
 constexpr inline iovec to_iov(std::array<char, N>& array) noexcept {
     return to_iov(array.data(), array.size());
@@ -406,6 +408,7 @@ public:
         io_uring_prep_openat(sqe, dfd, path, flags, mode);
         return await_work(sqe, iflags, 0);
 #else
+        co_await yield(); // TODO: remove this
         co_return ::openat(dfd, path, flags, mode);
 #endif
     }
@@ -424,6 +427,7 @@ public:
         io_uring_prep_close(sqe, fd);
         return await_work(sqe, iflags, 0);
 #else
+        co_await yield(); // TODO: remove this
         co_return ::close(fd);
 #endif
     }
@@ -446,8 +450,13 @@ public:
         io_uring_prep_statx(sqe, dfd, path, flags, mask, statxbuf);
         return await_work(sqe, iflags, 0);
 #else
+        co_await yield(); // TODO: remove this
         co_return ::statx(dfd, path, flags, mask, statxbuf);
 #endif
+    }
+
+    task<int> testNone() {
+        co_return 1;
     }
 
 private:

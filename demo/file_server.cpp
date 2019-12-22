@@ -84,7 +84,7 @@ task<> serve(io_service& service, int clientfd, int dirfd) {
 
     std::array<char, BUF_SIZE> buffer;
 
-    int res = co_await service.readv(clientfd, to_iov(buffer), 0) | panic_on_err("readv", false);
+    int res = co_await service.recvmsg(clientfd, to_iov(buffer), 0) | panic_on_err("readv", false);
 
     std::string_view buf_view = std::string_view(buffer.data(), size_t(res));
 

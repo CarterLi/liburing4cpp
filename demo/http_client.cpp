@@ -28,18 +28,22 @@ task<> start_work(io_service& service, const char* hostname) {
         int clientfd = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol) | panic_on_err("socket creation", true);
         on_scope_exit closesock([&]() { service.close(clientfd); });
 
-        co_await service.connect(clientfd, addr->ai_addr, addr->ai_addrlen) | panic_on_err("connect", false);
+        if (co_await service.connect(clientfd, addr->ai_addr, addr->ai_addrlen) < 0) continue;
 
-        co_await service.sendmsg(clientfd, { to_iov("GET / HTTP/1.0\r\n\r\n") }, MSG_NOSIGNAL) | panic_on_err("sendmsg", false);
+        co_await service.sendmsg(clientfd, { to_iov(fmt::format("GET / HTTP/1.0\r\nHost: {}\r\nAccept: */*\r\n\r\n", hostname)) }, MSG_NOSIGNAL) | panic_on_err("sendmsg", false);
 
         std::array<char, 1024> buffer;
         int res;
-        do {
-            res = co_await service.recvmsg(clientfd, { to_iov(buffer) }, MSG_NOSIGNAL) | panic_on_err("recvmsg", false);
+        for (;;) {
+            res = co_await service.recvmsg(clientfd, { to_iov(buffer) }, MSG_NOSIGNAL | MSG_MORE) | panic_on_err("recvmsg", false);
             if (res == 0) break;
             co_await service.writev(STDOUT_FILENO, { to_iov(buffer.data(), size_t(res)) }, 0) | panic_on_err("writev", false);
-        } while (res == buffer.size());
+        }
+
+        co_return;
     }
+
+    throw std::runtime_error("Unable to connect any resolved server");
 }
 
 int main(int argc, char* argv[]) {

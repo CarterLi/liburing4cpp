@@ -18,7 +18,7 @@ struct promise final: std::experimental::suspend_always, cancelable {
 
     template <typename TPromise>
     void await_suspend(std::experimental::coroutine_handle<TPromise> caller) noexcept {
-        on_suspended(&caller.promise().callee_);
+        on_suspend(&caller.promise().callee_);
         waiter_ = caller;
     }
     T await_resume() const {

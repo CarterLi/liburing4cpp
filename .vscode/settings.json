@@ -88,6 +88,8 @@
     "__tree": "cpp",
     "compare": "cpp",
     "__functional_03": "cpp",
-    "filesystem": "cpp"
+    "filesystem": "cpp",
+    "format": "cpp",
+    "set": "cpp"
   }
 }

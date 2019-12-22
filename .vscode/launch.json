@@ -10,8 +10,7 @@
       "request": "launch",
       "program": "${workspaceFolder}/tests/whens",
       "args": [
-        "mime_dicts.cpp",
-        "mime_dicts.txt"
+        "."
       ],
       "cwd": "${workspaceFolder}/tests",
       "environment": [
