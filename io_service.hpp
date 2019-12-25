@@ -144,15 +144,6 @@ public:
         io_uring_prep_##operation(sqe, fd, iovecs, nr_vecs, offset);                 \
         return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);                      \
     }                                                                                \
-                                                                                     \
-    task<int> operation(                                                             \
-        int fd,                                                                      \
-        iovec iov,                                                                   \
-        off_t offset,                                                                \
-        uint8_t iflags = 0                                                           \
-    ) {                                                                              \
-        co_return co_await operation(fd, &iov, 1, offset, iflags);                   \
-    }
 
     /** Read data into multiple buffers asynchronously
      * @see preadv2(2)
@@ -169,6 +160,47 @@ public:
      * @return a task object for awaiting
      */
     DEFINE_AWAIT_OP(writev)
+#undef DEFINE_AWAIT_OP
+
+#if LINUX_KERNEL_VERSION >= 56
+#define DEFINE_AWAIT_OP(operation)                                                   \
+    task<int> operation(                                                             \
+        int fd,                                                                      \
+        iovec iov,                                                                   \
+        off_t offset,                                                                \
+        uint8_t iflags = 0                                                           \
+    ) {                                                                              \
+        auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
+        io_uring_prep_##operation(sqe, fd, iov.iov_base, iov.iov_len, offset);       \
+        return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);                      \
+    }
+#else
+#define DEFINE_AWAIT_OP(operation)                                                   \
+    task<int> operation(                                                             \
+        int fd,                                                                      \
+        iovec iov,                                                                   \
+        off_t offset,                                                                \
+        uint8_t iflags = 0                                                           \
+    ) {                                                                              \
+        co_return co_await operation ## v(fd, &iov, 1, offset, iflags);                   \
+    }
+#endif
+
+    /** Read from a file descriptor at a given offset asynchronously
+     * @see pread(2)
+     * @see io_uring_enter(2) IORING_OP_READ
+     * @param iflags IOSQE_* flags
+     * @return a task object for awaiting
+     */
+    DEFINE_AWAIT_OP(read)
+
+    /** Write to a file descriptor at a given offset asynchronously
+     * @see pwrite(2)
+     * @see io_uring_enter(2) IORING_OP_WRITE
+     * @param iflags IOSQE_* flags
+     * @return a task object for awaiting
+     */
+    DEFINE_AWAIT_OP(write)
 #undef DEFINE_AWAIT_OP
 
 #define DEFINE_AWAIT_OP(operation)                                                   \
@@ -408,7 +440,7 @@ public:
         io_uring_prep_openat(sqe, dfd, path, flags, mode);
         return await_work(sqe, iflags, 0);
 #else
-        co_await yield(); // TODO: remove this
+        co_await yield(iflags); // TODO: remove this
         co_return ::openat(dfd, path, flags, mode);
 #endif
     }
@@ -427,7 +459,7 @@ public:
         io_uring_prep_close(sqe, fd);
         return await_work(sqe, iflags, 0);
 #else
-        co_await yield(); // TODO: remove this
+        co_await yield(iflags); // TODO: remove this
         co_return ::close(fd);
 #endif
     }
@@ -453,10 +485,6 @@ public:
         co_await yield(); // TODO: remove this
         co_return ::statx(dfd, path, flags, mask, statxbuf);
 #endif
-    }
-
-    task<int> testNone() {
-        co_return 1;
     }
 
 private:

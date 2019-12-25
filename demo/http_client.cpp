@@ -37,7 +37,7 @@ task<> start_work(io_service& service, const char* hostname) {
         for (;;) {
             res = co_await service.recvmsg(clientfd, { to_iov(buffer) }, MSG_NOSIGNAL | MSG_MORE) | panic_on_err("recvmsg", false);
             if (res == 0) break;
-            co_await service.writev(STDOUT_FILENO, { to_iov(buffer.data(), size_t(res)) }, 0) | panic_on_err("writev", false);
+            co_await service.write(STDOUT_FILENO, to_iov(buffer.data(), size_t(res)), 0) | panic_on_err("write", false);
         }
 
         co_return;

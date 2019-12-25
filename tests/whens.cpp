@@ -44,8 +44,8 @@ int main() {
         }
         fmt::print("cancel end, should not wait\n");
         fmt::print("io link start\n");
-        delayAndPrint(1, IOSQE_IO_LINK | IOSQE_IO_HARDLINK);
-        delayAndPrint(2, IOSQE_IO_LINK | IOSQE_IO_HARDLINK);
+        delayAndPrint(1, IOSQE_IO_HARDLINK);
+        delayAndPrint(2, IOSQE_IO_HARDLINK);
         co_await delayAndPrint(3);
         fmt::print("io link end, should wait 6s\n");
     }(service);

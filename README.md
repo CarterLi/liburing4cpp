@@ -16,12 +16,18 @@ Tested: `Linux archlinux-pc 5.4.0-arch1-1 #1 SMP PREEMPT Mon, 25 Nov 2019 22:31:
 #include "io_service.hpp"
 
 int main() {
+    // You first need an io_service instance
     io_service service;
 
+    // In order to `co_await`, you must be in a coroutine.
+    // We use IIFE here for simplification
     auto work = [&] () -> task<> {
-        co_await service.writev(STDOUT_FILENO, to_iov("Hello world\n"), 0);
+        // Use Linux syscalls just as what you did before (except a little changes)
+        co_await service.write(STDOUT_FILENO, to_iov("Hello world\n"), 0);
     }();
 
+    // At last, you need a loop to dispatch finished IO events
+    // It's usually called Event Loop (https://en.wikipedia.org/wiki/Event_loop)
     while (!work.done()) {
         auto [promise, res] = service.wait_event();
         promise->resolve(res);
