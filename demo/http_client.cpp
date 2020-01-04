@@ -30,14 +30,15 @@ task<> start_work(io_service& service, const char* hostname) {
 
         if (co_await service.connect(clientfd, addr->ai_addr, addr->ai_addrlen) < 0) continue;
 
-        co_await service.sendmsg(clientfd, { to_iov(fmt::format("GET / HTTP/1.0\r\nHost: {}\r\nAccept: */*\r\n\r\n", hostname)) }, MSG_NOSIGNAL) | panic_on_err("sendmsg", false);
+        auto header = fmt::format("GET / HTTP/1.0\r\nHost: {}\r\nAccept: */*\r\n\r\n", hostname);
+        co_await service.send(clientfd, header.data(), header.size(), MSG_NOSIGNAL) | panic_on_err("send", false);
 
         std::array<char, 1024> buffer;
         int res;
         for (;;) {
-            res = co_await service.recvmsg(clientfd, { to_iov(buffer) }, MSG_NOSIGNAL | MSG_MORE) | panic_on_err("recvmsg", false);
+            res = co_await service.recv(clientfd, buffer.data(), buffer.size(), MSG_NOSIGNAL | MSG_MORE) | panic_on_err("recv", false);
             if (res == 0) break;
-            co_await service.write(STDOUT_FILENO, to_iov(buffer.data(), size_t(res)), 0) | panic_on_err("write", false);
+            co_await service.write(STDOUT_FILENO, buffer.data(), unsigned(res), 0) | panic_on_err("write", false);
         }
 
         co_return;

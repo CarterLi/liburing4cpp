@@ -8,7 +8,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <liburing.h>   // http://git.kernel.dk/liburing
-#include <execinfo.h>
+#ifndef NDEBUG
+#   include <execinfo.h>
+#endif
 
 #include "promise.hpp"
 #include "task.hpp"
@@ -139,7 +141,7 @@ public:
         unsigned nr_vecs,                                                            \
         off_t offset,                                                                \
         uint8_t iflags = 0                                                           \
-    ) {                                                                              \
+    ) noexcept {                                                                     \
         auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
         io_uring_prep_##operation(sqe, fd, iovecs, nr_vecs, offset);                 \
         return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);                      \
@@ -166,23 +168,26 @@ public:
 #define DEFINE_AWAIT_OP(operation)                                                   \
     task<int> operation(                                                             \
         int fd,                                                                      \
-        iovec iov,                                                                   \
+        const void* buf,                                                             \
+        unsigned nbytes,                                                             \
         off_t offset,                                                                \
         uint8_t iflags = 0                                                           \
     ) {                                                                              \
         auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
-        io_uring_prep_##operation(sqe, fd, iov.iov_base, iov.iov_len, offset);       \
+        io_uring_prep_##operation(sqe, fd, const_cast<void *>(buf), nbytes, offset); \
         return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);                      \
     }
 #else
 #define DEFINE_AWAIT_OP(operation)                                                   \
     task<int> operation(                                                             \
         int fd,                                                                      \
-        iovec iov,                                                                   \
+        const void* buf,                                                             \
+        unsigned nbytes,                                                             \
         off_t offset,                                                                \
         uint8_t iflags = 0                                                           \
-    ) {                                                                              \
-        co_return co_await operation ## v(fd, &iov, 1, offset, iflags);                   \
+    ) noexcept {                                                                     \
+        iovec iov = { .iov_base = const_cast<void *>(buf), .iov_len = nbytes };      \
+        co_return co_await operation##v(fd, &iov, 1, offset, iflags);                \
     }
 #endif
 
@@ -211,7 +216,7 @@ public:
         off_t offset,                                                                \
         int buf_index,                                                               \
         uint8_t iflags = 0                                                           \
-    ) {                                                                              \
+    ) noexcept {                                                                     \
         auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
         io_uring_prep_##operation(sqe, fd, buf, nbytes, offset, buf_index);          \
         co_return co_await await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);          \
@@ -246,7 +251,7 @@ public:
         int fd,
         unsigned fsync_flags,
         uint8_t iflags = 0
-    ) {
+    ) noexcept {
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_fsync(sqe, fd, fsync_flags);
         return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);
@@ -264,7 +269,7 @@ public:
         off64_t nbytes,
         unsigned sync_range_flags,
         uint8_t iflags = 0
-    ) {
+    ) noexcept {
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_rw(IORING_OP_SYNC_FILE_RANGE, sqe, fd, nullptr, nbytes, offset);
         sqe->sync_range_flags = sync_range_flags;
@@ -277,21 +282,11 @@ public:
         msghdr* msg,                                                                 \
         uint32_t flags,                                                              \
         uint8_t iflags = 0                                                           \
-    ) {                                                                              \
+    ) noexcept {                                                                     \
         auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
         io_uring_prep_##operation(sqe, sockfd, msg, flags);                          \
         return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);                      \
     }                                                                                \
-                                                                                     \
-    task<int> operation(                                                             \
-        int sockfd,                                                                  \
-        iovec iov,                                                                   \
-        uint32_t flags,                                                              \
-        uint8_t iflags = 0                                                           \
-    ) {                                                                              \
-        msghdr msg = { .msg_iov = &iov, .msg_iovlen = 1 };                           \
-        co_return co_await operation(sockfd, &msg, flags, iflags);                   \
-    }
 
     /** Receive a message from a socket asynchronously
      * @see recvmsg(2)
@@ -310,6 +305,36 @@ public:
     DEFINE_AWAIT_OP(sendmsg)
 #undef DEFINE_AWAIT_OP
 
+#define DEFINE_AWAIT_OP(operation)                                                   \
+    task<int> operation(                                                             \
+        int sockfd,                                                                  \
+        const void* buf,                                                             \
+        unsigned nbytes,                                                             \
+        uint32_t flags,                                                              \
+        uint8_t iflags = 0                                                           \
+    ) noexcept {                                                                     \
+        iovec iov = { .iov_base = const_cast<void *>(buf), .iov_len = nbytes };      \
+        msghdr msg = { .msg_iov = &iov, .msg_iovlen = 1 };                           \
+        co_return co_await operation##msg (sockfd, &msg, flags, iflags);             \
+    }
+
+    /** Receive a message from a socket asynchronously
+     * @see recv(2)
+     * @see io_uring_enter(2) IORING_OP_RECV
+     * @param iflags IOSQE_* flags
+     * @return a task object for awaiting
+     */
+    DEFINE_AWAIT_OP(recv)
+
+    /** Send a message on a socket asynchronously
+     * @see send(2)
+     * @see io_uring_enter(2) IORING_OP_SEND
+     * @param iflags IOSQE_* flags
+     * @return a task object for awaiting
+     */
+    DEFINE_AWAIT_OP(send)
+#undef DEFINE_AWAIT_OP
+
     /** Wait for an event on a file descriptor asynchronously
      * @see poll(2)
      * @see io_uring_enter(2)
@@ -320,7 +345,7 @@ public:
         int fd,
         short poll_mask,
         uint8_t iflags = 0
-    ) {
+    ) noexcept {
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_poll_add(sqe, fd, poll_mask);
         return await_work(sqe, iflags, IORING_OP_POLL_REMOVE);
@@ -333,7 +358,7 @@ public:
      */
     task<int> yield(
         uint8_t iflags = 0
-    ) {
+    ) noexcept {
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_nop(sqe);
         return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);
@@ -351,7 +376,7 @@ public:
         socklen_t *addrlen,
         int flags = 0,
         uint8_t iflags = 0
-    ) {
+    ) noexcept {
 #if LINUX_KERNEL_VERSION >= 55
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_accept(sqe, fd, addr, addrlen, flags);
@@ -374,7 +399,7 @@ public:
         socklen_t addrlen,
         int flags = 0,
         uint8_t iflags = 0
-    ) {
+    ) noexcept {
 #if LINUX_KERNEL_VERSION >= 55
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_connect(sqe, fd, addr, addrlen);
@@ -394,7 +419,7 @@ public:
     task<int> timeout(
         __kernel_timespec ts,
         uint8_t iflags = 0
-    ) {
+    ) noexcept {
 #if LINUX_KERNEL_VERSION >= 55
         auto* sqe = io_uring_get_sqe_safe(&ring);
         // Everytime we pass pointers into other function,
@@ -419,7 +444,7 @@ public:
     task<int> timeout(
         std::chrono::nanoseconds dur,
         uint8_t iflags = 0
-    ) {
+    ) noexcept {
         return timeout(dur2ts(dur), iflags);
     }
 
@@ -434,7 +459,7 @@ public:
         int flags,
         mode_t mode,
         uint8_t iflags = 0
-    ) {
+    ) noexcept {
 #if LINUX_KERNEL_VERSION >= 56
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_openat(sqe, dfd, path, flags, mode);
@@ -453,7 +478,7 @@ public:
     task<int> close(
         int fd,
         uint8_t iflags = 0
-    ) {
+    ) noexcept {
 #if LINUX_KERNEL_VERSION >= 56
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_close(sqe, fd);
@@ -476,7 +501,7 @@ public:
         unsigned mask,
         struct statx *statxbuf,
         uint8_t iflags = 0
-    ) {
+    ) noexcept {
 #if LINUX_KERNEL_VERSION >= 56
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_statx(sqe, dfd, path, flags, mask, statxbuf);
@@ -492,8 +517,8 @@ private:
         io_uring_sqe* sqe,
         uint8_t iflags,
         int cancel_opcode
-    ) {
-        promise<int> p([cancel_opcode = cancel_opcode, pring = &ring] (promise<int>* self) {
+    ) noexcept {
+        promise<int> p([cancel_opcode = cancel_opcode, pring = &ring] (promise<int>* self) noexcept {
             // For Linux 5.4 and below, canceled operations won't return -ECANCELED, thus no exceptions will be thrown
             io_uring_sqe *sqe = io_uring_get_sqe_safe(pring);
             io_uring_prep_rw(cancel_opcode, sqe, -1, self, 0, 0);
@@ -531,7 +556,7 @@ public:
      * @return optional. std::nullopt if no events are ready
      */
     [[nodiscard]]
-    std::optional<std::pair<promise<int> *, int>> peek_event() {
+    std::optional<std::pair<promise<int> *, int>> peek_event() noexcept {
         for (io_uring_cqe* cqe; io_uring_peek_cqe(&ring, &cqe) >= 0 && cqe; ) {
             io_uring_cqe_seen(&ring, cqe);
 
@@ -548,7 +573,7 @@ public:
      * @return optional. std::nullopt if no events are ready
      */
     [[nodiscard]]
-    std::optional<std::pair<promise<int> *, int>> timedwait_event(__kernel_timespec timeout) {
+    std::optional<std::pair<promise<int> *, int>> timedwait_event(__kernel_timespec timeout) noexcept {
         if  (auto result = peek_event()) return result;
         if (io_uring_cqe* cqe; io_uring_wait_cqe_timeout(&ring, &cqe, &timeout) >= 0 && cqe) {
             io_uring_cqe_seen(&ring, cqe);
@@ -578,7 +603,7 @@ public:
     /** Unregister all files
      * @see io_uring_register(2) IORING_UNREGISTER_FILES
      */
-    int unregister_files() {
+    int unregister_files() noexcept {
         return io_uring_unregister_files(&ring);
     }
 
@@ -595,7 +620,7 @@ public:
     /** Unregister all buffers
      * @see io_uring_register(2) IORING_UNREGISTER_BUFFERS
      */
-    int unregister_buffers() {
+    int unregister_buffers() noexcept {
         return io_uring_unregister_buffers(&ring);
     }
 

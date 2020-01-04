@@ -36,7 +36,7 @@ task<> http_send_file(io_service& service, std::string filename, int clientfd, i
     const auto infd = co_await service.openat(dirfd, filename.c_str(), O_RDONLY, 0);
     if (infd < 0) {
         fmt::print("{}: file not found!\n", filename);
-        co_await service.sendmsg(clientfd, to_iov(http_404_hdr), MSG_NOSIGNAL) | panic_on_err("sendmsg" , false);
+        co_await service.send(clientfd, http_404_hdr.data(), http_404_hdr.size(), MSG_NOSIGNAL) | panic_on_err("send" , false);
         co_return;
     }
 
@@ -44,7 +44,7 @@ task<> http_send_file(io_service& service, std::string filename, int clientfd, i
 
     if (struct stat st; fstat(infd, &st) || !S_ISREG(st.st_mode)) {
         fmt::print("{}: not a regular file!\n", filename);
-        co_await service.sendmsg(clientfd, to_iov(http_403_hdr), MSG_NOSIGNAL) | panic_on_err("sendmsg" , false);
+        co_await service.send(clientfd, http_403_hdr.data(), http_403_hdr.size(), MSG_NOSIGNAL) | panic_on_err("send" , false);
     } else {
         auto contentType = [filename_view = std::string_view(filename)]() {
             auto extension = filename_view.substr(filename_view.find_last_of('.') + 1);
@@ -53,25 +53,22 @@ task<> http_send_file(io_service& service, std::string filename, int clientfd, i
             return iter->second;
         }();
 
-        co_await service.sendmsg(clientfd, to_iov(
-            fmt::format("HTTP/1.1 200 OK\r\nContent-type: {}\r\nContent-Length: {}\r\n\r\n", contentType, st.st_size)
-        ), MSG_NOSIGNAL | MSG_MORE) | panic_on_err("sendmsg" , false);
+        auto header = fmt::format("HTTP/1.1 200 OK\r\nContent-type: {}\r\nContent-Length: {}\r\n\r\n", contentType, st.st_size);
+        co_await service.send(clientfd, header.data(), header.size(), MSG_NOSIGNAL | MSG_MORE) | panic_on_err("send" , false);
 
         off_t offset = 0;
         std::array<char, BUF_SIZE> filebuf;
-        auto iov = to_iov(filebuf);
         for (; st.st_size - offset > BUF_SIZE; offset += BUF_SIZE) {
             co_await when_all(std::array {
-                service.read(infd, iov, offset, IOSQE_IO_LINK) | panic_on_err("read" , false),
-                service.sendmsg(clientfd, iov, MSG_NOSIGNAL | MSG_MORE) | panic_on_err("sendmsg", false),
+                service.read(infd, filebuf.data(), filebuf.size(), offset, IOSQE_IO_LINK) | panic_on_err("read" , false),
+                service.send(clientfd, filebuf.data(), filebuf.size(), MSG_NOSIGNAL | MSG_MORE) | panic_on_err("send", false),
             });
             co_await service.timeout(100ms) | panic_on_err("timeout" , false); // For debugging
         }
         if (st.st_size > offset) {
-            iov.iov_len = size_t(st.st_size - offset);
             co_await when_all(std::array {
-                service.read(infd, iov, offset, IOSQE_IO_LINK) | panic_on_err("read", false),
-                service.sendmsg(clientfd, iov, MSG_NOSIGNAL) | panic_on_err("sendmsg", false),
+                service.read(infd, filebuf.data(), st.st_size - offset, offset, IOSQE_IO_LINK) | panic_on_err("read", false),
+                service.send(clientfd, filebuf.data(), st.st_size - offset, MSG_NOSIGNAL) | panic_on_err("send", false),
             });
         }
     }
@@ -84,7 +81,7 @@ task<> serve(io_service& service, int clientfd, int dirfd) {
 
     std::array<char, BUF_SIZE> buffer;
 
-    int res = co_await service.recvmsg(clientfd, to_iov(buffer), 0) | panic_on_err("readv", false);
+    int res = co_await service.recv(clientfd, buffer.data(), buffer.size(), 0) | panic_on_err("recv", false);
 
     std::string_view buf_view = std::string_view(buffer.data(), size_t(res));
 
@@ -95,7 +92,7 @@ task<> serve(io_service& service, int clientfd, int dirfd) {
         co_await http_send_file(service, file, clientfd, dirfd);
     } else {
         fmt::print("unsupported request: {}\n", buf_view);
-        co_await service.sendmsg(clientfd, to_iov(http_400_hdr), MSG_NOSIGNAL) | panic_on_err("sendmsg", false);
+        co_await service.send(clientfd, http_400_hdr.data(), http_400_hdr.size(), MSG_NOSIGNAL) | panic_on_err("send", false);
     }
 }
 

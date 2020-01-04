@@ -23,7 +23,8 @@ int main() {
     // We use IIFE here for simplification
     auto work = [&] () -> task<> {
         // Use Linux syscalls just as what you did before (except a little changes)
-        co_await service.write(STDOUT_FILENO, to_iov("Hello world\n"), 0);
+        const str = "Hello world\n"sv;
+        co_await service.write(STDOUT_FILENO, str.data(), str.size(), 0);
     }();
 
     // At last, you need a loop to dispatch finished IO events
