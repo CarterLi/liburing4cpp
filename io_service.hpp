@@ -305,6 +305,20 @@ public:
     DEFINE_AWAIT_OP(sendmsg)
 #undef DEFINE_AWAIT_OP
 
+#if LINUX_KERNEL_VERSION >= 56
+#define DEFINE_AWAIT_OP(operation)                                                     \
+    task<int> operation(                                                               \
+        int sockfd,                                                                    \
+        const void* buf,                                                               \
+        unsigned nbytes,                                                               \
+        uint32_t flags,                                                                \
+        uint8_t iflags = 0                                                             \
+    ) noexcept {                                                                       \
+        auto* sqe = io_uring_get_sqe_safe(&ring);                                      \
+        io_uring_prep_##operation(sqe, sockfd, const_cast<void *>(buf), nbytes, flags);\
+        return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);                        \
+    }
+#else
 #define DEFINE_AWAIT_OP(operation)                                                   \
     task<int> operation(                                                             \
         int sockfd,                                                                  \
@@ -317,6 +331,7 @@ public:
         msghdr msg = { .msg_iov = &iov, .msg_iovlen = 1 };                           \
         co_return co_await operation##msg (sockfd, &msg, flags, iflags);             \
     }
+#endif
 
     /** Receive a message from a socket asynchronously
      * @see recv(2)
