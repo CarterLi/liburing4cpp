@@ -144,7 +144,7 @@ public:
     ) noexcept {                                                                     \
         auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
         io_uring_prep_##operation(sqe, fd, iovecs, nr_vecs, offset);                 \
-        return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);                      \
+        return await_work(sqe, iflags);                                              \
     }                                                                                \
 
     /** Read data into multiple buffers asynchronously
@@ -175,7 +175,7 @@ public:
     ) {                                                                              \
         auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
         io_uring_prep_##operation(sqe, fd, const_cast<void *>(buf), nbytes, offset); \
-        return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);                      \
+        return await_work(sqe, iflags);                                              \
     }
 #else
 #define DEFINE_AWAIT_OP(operation)                                                   \
@@ -219,7 +219,7 @@ public:
     ) noexcept {                                                                     \
         auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
         io_uring_prep_##operation(sqe, fd, buf, nbytes, offset, buf_index);          \
-        co_return co_await await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);          \
+        co_return co_await await_work(sqe, iflags);                                  \
     }
 
     /** Read data into a fixed buffer asynchronously
@@ -254,7 +254,7 @@ public:
     ) noexcept {
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_fsync(sqe, fd, fsync_flags);
-        return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);
+        return await_work(sqe, iflags);
     }
 
     /** Sync a file segment with disk asynchronously
@@ -273,7 +273,7 @@ public:
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_rw(IORING_OP_SYNC_FILE_RANGE, sqe, fd, nullptr, nbytes, offset);
         sqe->sync_range_flags = sync_range_flags;
-        return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);
+        return await_work(sqe, iflags);
     }
 
 #define DEFINE_AWAIT_OP(operation)                                                   \
@@ -285,7 +285,7 @@ public:
     ) noexcept {                                                                     \
         auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
         io_uring_prep_##operation(sqe, sockfd, msg, flags);                          \
-        return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);                      \
+        return await_work(sqe, iflags);                                              \
     }                                                                                \
 
     /** Receive a message from a socket asynchronously
@@ -316,7 +316,7 @@ public:
     ) noexcept {                                                                       \
         auto* sqe = io_uring_get_sqe_safe(&ring);                                      \
         io_uring_prep_##operation(sqe, sockfd, const_cast<void *>(buf), nbytes, flags);\
-        return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);                        \
+        return await_work(sqe, iflags);                                                \
     }
 #else
 #define DEFINE_AWAIT_OP(operation)                                                   \
@@ -363,7 +363,7 @@ public:
     ) noexcept {
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_poll_add(sqe, fd, poll_mask);
-        return await_work(sqe, iflags, IORING_OP_POLL_REMOVE);
+        return await_work(sqe, iflags);
     }
 
     /** Enqueue a NOOP command, which eventually acts like pthread_yield when awaiting
@@ -376,7 +376,7 @@ public:
     ) noexcept {
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_nop(sqe);
-        return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);
+        return await_work(sqe, iflags);
     }
 
     /** Accept a connection on a socket asynchronously
@@ -392,14 +392,9 @@ public:
         int flags = 0,
         uint8_t iflags = 0
     ) noexcept {
-#if LINUX_KERNEL_VERSION >= 55
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_accept(sqe, fd, addr, addrlen, flags);
-        return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);
-#else
-        co_await poll(fd, POLLIN, iflags);
-        co_return ::accept4(fd, addr, addrlen, flags);
-#endif
+        return await_work(sqe, iflags);
     }
 
     /** Initiate a connection on a socket asynchronously
@@ -415,14 +410,9 @@ public:
         int flags = 0,
         uint8_t iflags = 0
     ) noexcept {
-#if LINUX_KERNEL_VERSION >= 55
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_connect(sqe, fd, addr, addrlen);
-        return await_work(sqe, iflags, IORING_OP_ASYNC_CANCEL);
-#else
-        co_await poll(fd, POLLIN, iflags);
-        co_return ::connect(fd, addr, addrlen);
-#endif
+        return await_work(sqe, iflags);
     }
 
     /** Wait for specified duration asynchronously
@@ -435,25 +425,12 @@ public:
         __kernel_timespec ts,
         uint8_t iflags = 0
     ) noexcept {
-#if LINUX_KERNEL_VERSION >= 55
         auto* sqe = io_uring_get_sqe_safe(&ring);
         // Everytime we pass pointers into other function,
         // we MUST use co_return co_await to insure that variable
         // isn't destructed before await_work truly returns
         io_uring_prep_timeout(sqe, &ts, 0, 0);
-        // IORING_OP_TIMEOUT_REMOVE is supported in Linux 5.5+ only, not in Linux 5.4.x
-        co_return co_await await_work(sqe, iflags, IORING_OP_TIMEOUT_REMOVE);
-#else
-        itimerspec exp = { {}, { ts.tv_sec, ts.tv_nsec } };
-        // IOSQE_IO_LINK won't work here because the timer is created before the fd is polled
-        auto tfd = timerfd_create(CLOCK_MONOTONIC, 0);
-        if (tfd < 0) co_return -errno;
-        on_scope_exit closefd([=]() { close(tfd); });
-        if (timerfd_settime(tfd, 0, &exp, nullptr) < 0) co_return -errno;
-        // Insure that tfd is NOT closed before poll is truly finished
-        // IOSQE_IO_LINK doesn't work here since `timerfd_settime` is called before polling
-        co_return co_await poll(tfd, POLLIN, iflags);
-#endif
+        co_return co_await await_work(sqe, iflags);
     }
 
     task<int> timeout(
@@ -480,7 +457,7 @@ public:
         io_uring_prep_openat(sqe, dfd, path, flags, mode);
         return await_work(sqe, iflags, 0);
 #else
-        co_await yield(iflags); // TODO: remove this
+        co_await yield(iflags);
         co_return ::openat(dfd, path, flags, mode);
 #endif
     }
@@ -499,7 +476,7 @@ public:
         io_uring_prep_close(sqe, fd);
         return await_work(sqe, iflags, 0);
 #else
-        co_await yield(iflags); // TODO: remove this
+        co_await yield(iflags);
         co_return ::close(fd);
 #endif
     }
@@ -522,7 +499,7 @@ public:
         io_uring_prep_statx(sqe, dfd, path, flags, mask, statxbuf);
         return await_work(sqe, iflags, 0);
 #else
-        co_await yield(); // TODO: remove this
+        co_await yield();
         co_return ::statx(dfd, path, flags, mask, statxbuf);
 #endif
     }
@@ -530,13 +507,11 @@ public:
 private:
     task<int> await_work(
         io_uring_sqe* sqe,
-        uint8_t iflags,
-        int cancel_opcode
+        uint8_t iflags
     ) noexcept {
-        promise<int> p([cancel_opcode = cancel_opcode, pring = &ring] (promise<int>* self) noexcept {
-            // For Linux 5.4 and below, canceled operations won't return -ECANCELED, thus no exceptions will be thrown
+        promise<int> p([pring = &ring] (promise<int>* self) noexcept {
             io_uring_sqe *sqe = io_uring_get_sqe_safe(pring);
-            io_uring_prep_rw(cancel_opcode, sqe, -1, self, 0, 0);
+            io_uring_prep_rw(IORING_OP_ASYNC_CANCEL, sqe, -1, self, 0, 0);
         });
         io_uring_sqe_set_flags(sqe, iflags);
         io_uring_sqe_set_data(sqe, &p);
