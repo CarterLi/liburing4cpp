@@ -58,7 +58,7 @@ Main [liburing](https://github.com/axboe/liburing) binding. Also provides some h
 
 ### demo
 
-Some demo
+Some examples
 
 #### file_server.cpp
 
@@ -67,6 +67,22 @@ A simple http file server that returns file's content requested by clients
 #### link_cp.cpp
 
 A cp command inspired by original [liburing link-cp demo](https://github.com/axboe/liburing/blob/master/examples/link-cp.c)
+
+#### http_client.cpp
+
+A simple http client that sends `GET` http request
+
+#### threading.cpp
+
+A simple `async_invoke` implementation
+
+#### test.cpp
+
+Various simple tests
+
+#### bench.cpp
+
+Benchmarks
 
 ## Build
 

@@ -1,8 +1,9 @@
 /CMakeLists.txt.user
 /build
 /async
-/tests/whens
 /demo/file_server
 /demo/http_client
 /demo/link_cp
 /demo/threading
+/demo/test
+/demo/bench

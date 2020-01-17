@@ -4,7 +4,7 @@ CXXFLAGS ?= -O0 -g -rdynamic -D_LIBCPP_DEBUG_LEVEL=1 -fno-omit-frame-pointer -fs
 
 override CXXFLAGS += -Wall -fcoroutines-ts -stdlib=libc++ -std=c++17 -lc++ -lc++abi -I.. -I../fmt/include ../fmt/src/format.cc -luring
 
-all_targets = file_server http_client link_cp threading
+all_targets = file_server http_client link_cp threading test bench
 
 all: $(all_targets)
 
@@ -22,3 +22,9 @@ link_cp: link_cp.cpp ../task.hpp ../io_service.hpp ../promise.hpp ../when.hpp ..
 
 threading: threading.cpp ../task.hpp ../io_service.hpp ../promise.hpp ../cancelable.hpp
 	$(CXX) ./threading.cpp -o threading $(CXXFLAGS)
+
+test: test.cpp ../task.hpp ../io_service.hpp ../promise.hpp ../when.hpp ../cancelable.hpp
+	$(CXX) ./test.cpp -o test $(CXXFLAGS)
+
+bench: bench.cpp ../task.hpp ../io_service.hpp ../promise.hpp ../cancelable.hpp
+	$(CXX) ./bench.cpp -o bench $(CXXFLAGS)
