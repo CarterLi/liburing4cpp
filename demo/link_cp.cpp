@@ -6,22 +6,22 @@
 
 #include "io_service.hpp"
 
-#define BS	(8*1024)
+#define BS (8*1024)
 
 static off_t get_file_size(int fd) {
-	struct stat st;
+    struct stat st;
 
-	fstat(fd, &st) | panic_on_err("fstat", true);
+    fstat(fd, &st) | panic_on_err("fstat", true);
 
-	if (__builtin_expect(S_ISREG(st.st_mode), true)) {
-		return st.st_size;
-	}
+    if (__builtin_expect(S_ISREG(st.st_mode), true)) {
+        return st.st_size;
+    }
 
     if (S_ISBLK(st.st_mode)) {
         unsigned long long bytes;
         ioctl(fd, BLKGETSIZE64, &bytes) | panic_on_err("ioctl", true);
-		return bytes;
-	}
+        return bytes;
+    }
 
     throw std::runtime_error("Unsupported file type");
 }

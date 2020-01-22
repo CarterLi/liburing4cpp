@@ -80,7 +80,7 @@ struct async_mutex {
 
     void lock() {
         eventfd_t value = 0;
-        auto res = eventfd_read(efd, &value);
+        [[maybe_unused]] int res = eventfd_read(efd, &value);
         assert(res > 0 && value == 1);
     }
 
@@ -93,7 +93,7 @@ struct async_mutex {
 
     task<> async_lock(io_service& service) {
         eventfd_t value = 0;
-        int res = co_await service.read(efd, &value, sizeof(value), 0);
+        [[maybe_unused]] int res = co_await service.read(efd, &value, sizeof(value), 0);
         assert(res > 0 && value == 1);
     }
 

@@ -97,12 +97,14 @@ struct task final: std::experimental::suspend_always, cancelable {
     T get_result() const {
         assert(done());
         auto& result_ = coro_.promise().result_;
-        assert(result_.index() > 0);
-        if (result_.index() == 2) {
-            std::rethrow_exception(std::get<2>(result_));
-        }
-        if constexpr (!std::is_void_v<T>) {
-            return std::get<1>(result_);
+        if (auto* pep = std::get_if<2>(&result_)) {
+            std::rethrow_exception(*pep);
+        } else {
+            if constexpr (!std::is_void_v<T>) {
+                auto* pv = std::get_if<1>(&result_);
+                assert(pv);
+                return *pv;
+            }
         }
     }
 
