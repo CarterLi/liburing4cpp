@@ -481,29 +481,6 @@ public:
 #endif
     }
 
-    /** Get file status asynchronously
-     * @see io_uring_enter(2) IORING_OP_STATX
-     * @param iflags IOSQE_* flags
-     * @return a task object for awaiting
-     */
-    task<int> statx(
-        int dfd,
-        const char *path,
-        int flags,
-        unsigned mask,
-        struct statx *statxbuf,
-        uint8_t iflags = 0
-    ) noexcept {
-#if LINUX_KERNEL_VERSION >= 56
-        auto* sqe = io_uring_get_sqe_safe(&ring);
-        io_uring_prep_statx(sqe, dfd, path, flags, mask, statxbuf);
-        return await_work(sqe, iflags, 0);
-#else
-        co_await yield();
-        co_return ::statx(dfd, path, flags, mask, statxbuf);
-#endif
-    }
-
 private:
     task<int> await_work(
         io_uring_sqe* sqe,
