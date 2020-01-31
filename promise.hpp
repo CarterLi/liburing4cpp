@@ -7,7 +7,7 @@
 #include "cancelable.hpp"
 
 /** An awaitable object that can be created directly (without calling an async function) */
-template <typename T = void>
+template <typename T = void, bool nothrow = false>
 struct promise final: std::experimental::suspend_always, cancelable {
     promise() = default;
     /** Create a promise with cancellation support
@@ -23,14 +23,13 @@ struct promise final: std::experimental::suspend_always, cancelable {
     }
     T await_resume() const {
         on_resume();
-        if (auto* pep = std::get_if<2>(&result_)) {
-            std::rethrow_exception(*pep);
-        } else {
-            if constexpr (!std::is_void_v<T>) {
-                auto* pv = std::get_if<1>(&result_);
-                assert(pv);
-                return *pv;
+        if constexpr (!nothrow) {
+            if (auto* pep = std::get_if<2>(&result_)) {
+                std::rethrow_exception(*pep);
             }
+        }
+        if constexpr (!std::is_void_v<T>) {
+            return *std::get_if<1>(&result_);
         }
     }
 
@@ -47,8 +46,12 @@ struct promise final: std::experimental::suspend_always, cancelable {
     }
     /** Reject the promise, and resume the coroutine */
     void reject(std::exception_ptr eptr) {
-        result_.template emplace<2>(eptr);
-        waiter_.resume();
+        if constexpr (!nothrow) {
+            result_.template emplace<2>(eptr);
+            waiter_.resume();
+        } else {
+            __builtin_unreachable();
+        }
     }
 
     /** Get whether the coroutine is done */
@@ -68,7 +71,7 @@ private:
     std::variant<
         std::monostate,
         std::conditional_t<std::is_void_v<T>, std::monostate, T>,
-        std::exception_ptr
+        std::conditional_t<!nothrow, std::exception_ptr, std::monostate>
     > result_;
     std::function<void (promise* self)> cancel_fn_;
 };

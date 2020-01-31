@@ -90,6 +90,8 @@
     "__functional_03": "cpp",
     "filesystem": "cpp",
     "format": "cpp",
-    "set": "cpp"
+    "set": "cpp",
+    "complex": "cpp",
+    "typeindex": "cpp"
   }
 }

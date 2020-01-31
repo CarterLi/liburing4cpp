@@ -10,30 +10,7 @@
 #include "when.hpp"
 
 template <typename Fn>
-task<std::invoke_result_t<Fn>> invoke(io_service& service, Fn&& fn) {
-    static_assert (noexcept(fn()));
-    static_assert (sizeof (eventfd_t) >= sizeof (intptr_t));
-    using result_t = std::invoke_result_t<Fn>;
-    int efd = ::eventfd(0, O_CLOEXEC);
-    on_scope_exit closefd([=]() { ::close(efd); });
-    std::thread([](Fn&& fn, int efd) {
-        if constexpr (std::is_void_v<result_t>) {
-            fn();
-            ::eventfd_write(efd, 1);
-        } else {
-            ::eventfd_write(efd, (eventfd_t) (intptr_t (new result_t(fn()))));
-        }
-    }, std::move(fn), efd).detach();
-
-    eventfd_t value = -1;
-    co_await service.read(efd, &value, sizeof (value), 0);
-    if constexpr (!std::is_void_v<result_t>) {
-        co_return *std::unique_ptr<result_t>((result_t *) (intptr_t (value)));
-    }
-}
-
-template <typename Fn>
-task<std::invoke_result_t<Fn>> invoke2(io_service& service, Fn&& fn) noexcept(noexcept(fn())) {
+task<std::invoke_result_t<Fn>> invoke(io_service& service, Fn&& fn) noexcept(noexcept(fn())) {
     using result_t = std::invoke_result_t<Fn>;
     int efd = ::eventfd(0, EFD_CLOEXEC);
     on_scope_exit closefd([=]() { ::close(efd); });
@@ -57,6 +34,8 @@ task<std::invoke_result_t<Fn>> invoke2(io_service& service, Fn&& fn) noexcept(no
                 std::atomic_signal_fence(std::memory_order_acquire);
                 result.template emplace<2>(std::current_exception());
                 std::atomic_signal_fence(std::memory_order_release);
+            } else {
+                __builtin_unreachable();
             }
         }
     }).detach();
@@ -111,7 +90,7 @@ int main() {
     auto work = [&] () -> task<> {
         int efd = eventfd(0, EFD_CLOEXEC | EFD_SEMAPHORE);
         eventfd_t v1 = -1, v2 = -1;
-        invoke2(service, [=]() noexcept {
+        invoke(service, [=]() noexcept {
             std::this_thread::sleep_for(1s);
             eventfd_write(efd, 123);
         });

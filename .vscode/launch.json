@@ -8,11 +8,11 @@
       "name": "(lldb) Launch",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/tests/whens",
+      "program": "${workspaceFolder}/demo/test",
       "args": [
         "."
       ],
-      "cwd": "${workspaceFolder}/tests",
+      "cwd": "${workspaceFolder}/demo",
       "environment": [
         {
           "name": "LSAN_OPTIONS",

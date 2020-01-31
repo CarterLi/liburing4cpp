@@ -92,7 +92,8 @@ inline int operator |(int ret, panic_on_err&& poe) {
     }
     return ret;
 }
-inline task<int> operator |(task<int> tret, panic_on_err&& poe) {
+template <bool nothrow>
+inline task<int> operator |(task<int, nothrow> tret, panic_on_err&& poe) {
     co_return (co_await tret) | std::move(poe);
 }
 
@@ -135,7 +136,7 @@ public:
 public:
 
 #define DEFINE_AWAIT_OP(operation)                                                   \
-    task<int> operation(                                                             \
+    task<int, true> operation(                                                             \
         int fd,                                                                      \
         iovec* iovecs,                                                               \
         unsigned nr_vecs,                                                            \
@@ -166,7 +167,7 @@ public:
 
 #if LINUX_KERNEL_VERSION >= 56
 #define DEFINE_AWAIT_OP(operation)                                                   \
-    task<int> operation(                                                             \
+    task<int, true> operation(                                                       \
         int fd,                                                                      \
         const void* buf,                                                             \
         unsigned nbytes,                                                             \
@@ -179,7 +180,7 @@ public:
     }
 #else
 #define DEFINE_AWAIT_OP(operation)                                                   \
-    task<int> operation(                                                             \
+    task<int, true> operation(                                                       \
         int fd,                                                                      \
         const void* buf,                                                             \
         unsigned nbytes,                                                             \
@@ -209,7 +210,7 @@ public:
 #undef DEFINE_AWAIT_OP
 
 #define DEFINE_AWAIT_OP(operation)                                                   \
-    task<int> operation(                                                             \
+    task<int, true> operation(                                                       \
         int fd,                                                                      \
         void* buf,                                                                   \
         unsigned nbytes,                                                             \
@@ -247,7 +248,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int> fsync(
+    task<int, true> fsync(
         int fd,
         unsigned fsync_flags,
         uint8_t iflags = 0
@@ -263,7 +264,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int> sync_file_range(
+    task<int, true> sync_file_range(
         int fd,
         off64_t offset,
         off64_t nbytes,
@@ -277,7 +278,7 @@ public:
     }
 
 #define DEFINE_AWAIT_OP(operation)                                                   \
-    task<int> operation(                                                             \
+    task<int, true> operation(                                                       \
         int sockfd,                                                                  \
         msghdr* msg,                                                                 \
         uint32_t flags,                                                              \
@@ -307,7 +308,7 @@ public:
 
 #if LINUX_KERNEL_VERSION >= 56
 #define DEFINE_AWAIT_OP(operation)                                                     \
-    task<int> operation(                                                               \
+    task<int, true> operation(                                                         \
         int sockfd,                                                                    \
         const void* buf,                                                               \
         unsigned nbytes,                                                               \
@@ -319,17 +320,17 @@ public:
         return await_work(sqe, iflags);                                                \
     }
 #else
-#define DEFINE_AWAIT_OP(operation)                                                   \
-    task<int> operation(                                                             \
-        int sockfd,                                                                  \
-        const void* buf,                                                             \
-        unsigned nbytes,                                                             \
-        uint32_t flags,                                                              \
-        uint8_t iflags = 0                                                           \
-    ) noexcept {                                                                     \
-        iovec iov = { .iov_base = const_cast<void *>(buf), .iov_len = nbytes };      \
-        msghdr msg = { .msg_iov = &iov, .msg_iovlen = 1 };                           \
-        co_return co_await operation##msg (sockfd, &msg, flags, iflags);             \
+#define DEFINE_AWAIT_OP(operation)                                                     \
+    task<int, true> operation(                                                         \
+        int sockfd,                                                                    \
+        const void* buf,                                                               \
+        unsigned nbytes,                                                               \
+        uint32_t flags,                                                                \
+        uint8_t iflags = 0                                                             \
+    ) noexcept {                                                                       \
+        iovec iov = { .iov_base = const_cast<void *>(buf), .iov_len = nbytes };        \
+        msghdr msg = { .msg_iov = &iov, .msg_iovlen = 1 };                             \
+        co_return co_await operation##msg (sockfd, &msg, flags, iflags);               \
     }
 #endif
 
@@ -356,7 +357,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int> poll(
+    task<int, true> poll(
         int fd,
         short poll_mask,
         uint8_t iflags = 0
@@ -371,7 +372,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int> yield(
+    task<int, true> yield(
         uint8_t iflags = 0
     ) noexcept {
         auto* sqe = io_uring_get_sqe_safe(&ring);
@@ -385,7 +386,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int> accept(
+    task<int, true> accept(
         int fd,
         sockaddr *addr,
         socklen_t *addrlen,
@@ -403,7 +404,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int> connect(
+    task<int, true> connect(
         int fd,
         sockaddr *addr,
         socklen_t addrlen,
@@ -421,7 +422,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int> timeout(
+    task<int, true> timeout(
         __kernel_timespec ts,
         uint8_t iflags = 0
     ) noexcept {
@@ -433,7 +434,7 @@ public:
         co_return co_await await_work(sqe, iflags);
     }
 
-    task<int> timeout(
+    task<int, true> timeout(
         std::chrono::nanoseconds dur,
         uint8_t iflags = 0
     ) noexcept {
@@ -445,7 +446,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int> openat(
+    task<int, true> openat(
         int dfd,
         const char *path,
         int flags,
@@ -455,7 +456,7 @@ public:
 #if LINUX_KERNEL_VERSION >= 56
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_openat(sqe, dfd, path, flags, mode);
-        return await_work(sqe, iflags, 0);
+        return await_work(sqe, iflags);
 #else
         co_await yield(iflags);
         co_return ::openat(dfd, path, flags, mode);
@@ -467,14 +468,14 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int> close(
+    task<int, true> close(
         int fd,
         uint8_t iflags = 0
     ) noexcept {
 #if LINUX_KERNEL_VERSION >= 56
         auto* sqe = io_uring_get_sqe_safe(&ring);
         io_uring_prep_close(sqe, fd);
-        return await_work(sqe, iflags, 0);
+        return await_work(sqe, iflags);
 #else
         co_await yield(iflags);
         co_return ::close(fd);
@@ -482,11 +483,11 @@ public:
     }
 
 private:
-    task<int> await_work(
+    task<int, true> await_work(
         io_uring_sqe* sqe,
         uint8_t iflags
     ) noexcept {
-        promise<int> p([pring = &ring] (promise<int>* self) noexcept {
+        promise<int, true> p([pring = &ring] (promise<int, true>* self) noexcept {
             io_uring_sqe *sqe = io_uring_get_sqe_safe(pring);
             io_uring_prep_rw(IORING_OP_ASYNC_CANCEL, sqe, -1, self, 0, 0);
         });
@@ -502,15 +503,15 @@ public:
      * @return a pair of promise pointer (used for resuming suspended coroutine) and retcode of finished command
      */
     [[nodiscard]]
-    std::pair<promise<int> *, int> wait_event() {
+    std::pair<promise<int, true> *, int> wait_event() {
         io_uring_cqe* cqe;
-        promise<int>* coro;
+        promise<int, true>* coro;
         io_uring_submit(&ring);
 
         do {
             io_uring_wait_cqe(&ring, &cqe) | panic_on_err("wait_cqe", false);
             io_uring_cqe_seen(&ring, cqe);
-            coro = static_cast<promise<int> *>(io_uring_cqe_get_data(cqe));
+            coro = static_cast<promise<int, true> *>(io_uring_cqe_get_data(cqe));
         } while (coro == nullptr);
 
         return { coro, cqe->res };
@@ -523,11 +524,11 @@ public:
      * @return optional. std::nullopt if no events are ready
      */
     [[nodiscard]]
-    std::optional<std::pair<promise<int> *, int>> peek_event() noexcept {
+    std::optional<std::pair<promise<int, true> *, int>> peek_event() noexcept {
         for (io_uring_cqe* cqe; io_uring_peek_cqe(&ring, &cqe) >= 0 && cqe; ) {
             io_uring_cqe_seen(&ring, cqe);
 
-            if (auto* coro = static_cast<promise<int> *>(io_uring_cqe_get_data(cqe))) {
+            if (auto* coro = static_cast<promise<int, true> *>(io_uring_cqe_get_data(cqe))) {
                 return std::make_pair(coro, cqe->res);
             }
         }
@@ -540,12 +541,12 @@ public:
      * @return optional. std::nullopt if no events are ready
      */
     [[nodiscard]]
-    std::optional<std::pair<promise<int> *, int>> timedwait_event(__kernel_timespec timeout) noexcept {
+    std::optional<std::pair<promise<int, true> *, int>> timedwait_event(__kernel_timespec timeout) noexcept {
         if  (auto result = peek_event()) return result;
         if (io_uring_cqe* cqe; io_uring_wait_cqe_timeout(&ring, &cqe, &timeout) >= 0 && cqe) {
             io_uring_cqe_seen(&ring, cqe);
 
-            if (auto* coro = static_cast<promise<int> *>(io_uring_cqe_get_data(cqe))) {
+            if (auto* coro = static_cast<promise<int, true> *>(io_uring_cqe_get_data(cqe))) {
                 return std::make_pair(coro, cqe->res);
             }
             return peek_event();
@@ -554,7 +555,7 @@ public:
     }
 
     [[nodiscard]]
-    inline std::optional<std::pair<promise<int> *, int>> timedwait_event(std::chrono::nanoseconds dur) {
+    inline std::optional<std::pair<promise<int, true> *, int>> timedwait_event(std::chrono::nanoseconds dur) {
         return timedwait_event(dur2ts(dur));
     }
 

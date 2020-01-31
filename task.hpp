@@ -10,13 +10,10 @@
 
 #include "cancelable.hpp"
 
-template <typename T = void>
-struct task;
-
 // only for internal usage
-template <typename T>
+template <typename T, bool nothrow>
 struct task_promise_base: cancelable_promise_base {
-    task<T> get_return_object();
+    task<T, nothrow> get_return_object();
     auto initial_suspend() { return std::experimental::suspend_never(); }
     auto final_suspend() noexcept {
         struct Awaiter: std::experimental::suspend_always {
@@ -34,28 +31,30 @@ struct task_promise_base: cancelable_promise_base {
         return Awaiter(this);
     }
     void unhandled_exception() {
-        result_.template emplace<2>(std::current_exception());
+        if constexpr (!nothrow) {
+            result_.template emplace<2>(std::current_exception());
+        } else {
+            __builtin_unreachable();
+        }
     }
 
     std::function<void ()> then;
 
 protected:
-    template <typename TT>
-    friend struct task;
+    friend struct task<T, nothrow>;
     task_promise_base() = default;
     std::experimental::coroutine_handle<> waiter_;
     std::variant<
         std::monostate,
         std::conditional_t<std::is_void_v<T>, std::monostate, T>,
-        std::exception_ptr
+        std::conditional_t<!nothrow, std::exception_ptr, std::monostate>
     > result_;
 };
 
 // only for internal usage
-template <typename T>
-struct task_promise final: task_promise_base<T> {
-    using task_promise_base<T>::result_;
-    using task_promise_base<T>::callee_;
+template <typename T, bool nothrow>
+struct task_promise final: task_promise_base<T, nothrow> {
+    using task_promise_base<T, nothrow>::result_;
 
     template <typename U>
     void return_value(U&& u) {
@@ -63,8 +62,10 @@ struct task_promise final: task_promise_base<T> {
     }
 };
 
-template <>
-struct task_promise<void> final: task_promise_base<void> {
+template <bool nothrow>
+struct task_promise<void, nothrow> final: task_promise_base<void, nothrow> {
+    using task_promise_base<void, nothrow>::result_;
+
     void return_void() {
         result_.template emplace<1>(std::monostate {});
     }
@@ -74,16 +75,16 @@ struct task_promise<void> final: task_promise_base<void> {
  * An awaitable object that returned by an async function
  * @warning do NOT discard this object when returned by some function, or UB WILL happen
  */
-template <typename T>
+template <typename T = void, bool nothrow = false>
 struct task final: std::experimental::suspend_always, cancelable {
-    using promise_type = task_promise<T>;
+    using promise_type = task_promise<T, nothrow>;
     using handle_t = std::experimental::coroutine_handle<promise_type>;
 
     task(const task&) = delete;
     task& operator =(const task&) = delete;
 
-    template <typename TT>
-    void await_suspend(std::experimental::coroutine_handle<task_promise<TT>> caller) noexcept {
+    template <typename T_, bool nothrow_>
+    void await_suspend(std::experimental::coroutine_handle<task_promise<T_, nothrow_>> caller) noexcept {
         on_suspend(&caller.promise().callee_);
         coro_.promise().waiter_ = caller;
     }
@@ -97,14 +98,13 @@ struct task final: std::experimental::suspend_always, cancelable {
     T get_result() const {
         assert(done());
         auto& result_ = coro_.promise().result_;
-        if (auto* pep = std::get_if<2>(&result_)) {
-            std::rethrow_exception(*pep);
-        } else {
-            if constexpr (!std::is_void_v<T>) {
-                auto* pv = std::get_if<1>(&result_);
-                assert(pv);
-                return *pv;
+        if constexpr (!nothrow) {
+            if (auto* pep = std::get_if<2>(&result_)) {
+                std::rethrow_exception(*pep);
             }
+        }
+        if constexpr (!std::is_void_v<T>) {
+            return *std::get_if<1>(&result_);
         }
     }
 
@@ -165,12 +165,12 @@ struct task final: std::experimental::suspend_always, cancelable {
     }
 
 private:
-    friend struct task_promise_base<T>;
+    friend struct task_promise_base<T, nothrow>;
     task(promise_type *p): coro_(handle_t::from_promise(*p)) {}
     handle_t coro_;
 };
 
-template <typename T>
-task<T> task_promise_base<T>::get_return_object() {
-    return task<T>(static_cast<task_promise<T> *>(this));
+template <typename T, bool nothrow>
+task<T, nothrow> task_promise_base<T, nothrow>::get_return_object() {
+    return task<T, nothrow>(static_cast<task_promise<T, nothrow> *>(this));
 }

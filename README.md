@@ -88,7 +88,7 @@ Benchmarks
 
 This library is header only. It provides some demos for testing
 
-`make`, requires clang++-9, `-std=c++17 -stdlib=libc++ -fcoroutines-ts`; depends on liburing & [fmt](http://fmtlib.net/)
+You must have `liburing` built and installed first, and run `make` in directory `demo`, requires clang++-9. When benchmarking, you may want to build it with optimization: `env CXXFLAGS="-O3 -flto -DNDEBUG -pthread" make`
 
 ## License
 

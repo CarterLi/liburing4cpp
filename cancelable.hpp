@@ -1,8 +1,8 @@
 #pragma once
 
-template <typename T>
+template <typename T, bool nothrow>
 struct task;
-template <typename T>
+template <typename T, bool nothrow>
 struct promise;
 
 /** Indicate a class is cancelable
@@ -31,9 +31,9 @@ protected:
 };
 
 struct cancelable_promise_base {
-    template <typename T>
+    template <typename T, bool nothrow>
     friend struct task;
-    template <typename T>
+    template <typename T, bool nothrow>
     friend struct promise;
 
 protected:
