@@ -76,12 +76,17 @@ struct task_promise<void, nothrow> final: task_promise_base<void, nothrow> {
  * @warning do NOT discard this object when returned by some function, or UB WILL happen
  */
 template <typename T = void, bool nothrow = false>
-struct task final: std::experimental::suspend_always, cancelable {
+struct task final: cancelable {
     using promise_type = task_promise<T, nothrow>;
     using handle_t = std::experimental::coroutine_handle<promise_type>;
 
     task(const task&) = delete;
     task& operator =(const task&) = delete;
+
+    bool await_ready() {
+        auto& result_ = coro_.promise().result_;
+        return result_.index() > 0;
+    }
 
     template <typename T_, bool nothrow_>
     void await_suspend(std::experimental::coroutine_handle<task_promise<T_, nothrow_>> caller) noexcept {

@@ -84,11 +84,17 @@ Various simple tests
 
 Benchmarks
 
+#### echo_server.cpp
+
+Echo server, features IOSQE_IO_LINK and IOSQE_FIXED_FILE
+
+See also https://github.com/frevib/io_uring-echo-server#benchmarks for benchmarking
+
 ## Build
 
 This library is header only. It provides some demos for testing
 
-You must have `liburing` built and installed first, and run `make` in directory `demo`, requires clang++-9. When benchmarking, you may want to build it with optimization: `env CXXFLAGS="-O3 -flto -DNDEBUG -pthread" make`
+You must have `liburing` built and installed first, and run `make` in directory `demo`, requires clang++-9. When benchmarking, you may want to build it with optimization: `env CXXFLAGS="-O3 -DNDEBUG -pthread" make`. Note it seems that `-flto` generates wrong code, don't use it ( for now )
 
 ## License
 

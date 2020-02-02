@@ -1,10 +1,10 @@
 CXX = clang++
 
-CXXFLAGS ?= -O0 -g -rdynamic -D_LIBCPP_DEBUG_LEVEL=1 -fno-omit-frame-pointer -fsanitize=address
+CXXFLAGS ?= -O0 -rdynamic -D_LIBCPP_DEBUG_LEVEL=1 -fno-omit-frame-pointer -fsanitize=address
 
-override CXXFLAGS += -Wall -fcoroutines-ts -stdlib=libc++ -std=c++17 -lc++ -lc++abi -I.. -I../fmt/include ../fmt/src/format.cc -luring
+override CXXFLAGS += -g -Wall -fcoroutines-ts -stdlib=libc++ -std=c++17 -lc++ -lc++abi -I.. -I../fmt/include ../fmt/src/format.cc -luring
 
-all_targets = file_server http_client link_cp threading test bench
+all_targets = file_server http_client link_cp threading test bench echo_server
 
 all: $(all_targets)
 
@@ -28,3 +28,6 @@ test: test.cpp ../task.hpp ../io_service.hpp ../promise.hpp ../when.hpp ../cance
 
 bench: bench.cpp ../task.hpp ../io_service.hpp ../promise.hpp ../cancelable.hpp
 	$(CXX) ./bench.cpp -o bench $(CXXFLAGS)
+
+echo_server: echo_server.cpp ../task.hpp ../io_service.hpp ../promise.hpp ../cancelable.hpp
+	$(CXX) ./echo_server.cpp -o echo_server $(CXXFLAGS)

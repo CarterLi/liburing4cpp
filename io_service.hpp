@@ -565,7 +565,17 @@ public:
      * @see io_uring_register(2) IORING_REGISTER_FILES
      */
     void register_files(std::initializer_list<int> fds) {
-        io_uring_register_files(&ring, fds.begin(), fds.size()) | panic_on_err("io_uring_register_files", false);
+        register_files(fds.begin(), (unsigned int)fds.size());
+    }
+    void register_files(const int *files, unsigned int nr_files) {
+        io_uring_register_files(&ring, files, nr_files) | panic_on_err("io_uring_register_files", false);
+    }
+
+    /** Update registered files
+     * @see io_uring_register(2) IORING_REGISTER_FILES_UPDATE
+     */
+    void register_files_update(unsigned off, int *files, unsigned nr_files) {
+        io_uring_register_files_update(&ring, off, files, nr_files) | panic_on_err("io_uring_register_files", false);
     }
 
     /** Unregister all files

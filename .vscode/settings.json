@@ -92,6 +92,8 @@
     "format": "cpp",
     "set": "cpp",
     "complex": "cpp",
-    "typeindex": "cpp"
+    "typeindex": "cpp",
+    "version": "cpp",
+    "forward_list": "cpp"
   }
 }

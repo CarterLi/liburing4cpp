@@ -8,13 +8,17 @@
 
 /** An awaitable object that can be created directly (without calling an async function) */
 template <typename T = void, bool nothrow = false>
-struct promise final: std::experimental::suspend_always, cancelable {
+struct promise final: cancelable {
     promise() = default;
     /** Create a promise with cancellation support
      * @param cancel_fn a function that cancels this promise
      */
     template <typename CancelFn>
     promise(CancelFn&& cancel_fn): cancel_fn_(std::move(cancel_fn)) {}
+
+    bool await_ready() {
+        return result_.index() > 0;
+    }
 
     template <typename TPromise>
     void await_suspend(std::experimental::coroutine_handle<TPromise> caller) noexcept {
