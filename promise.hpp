@@ -6,7 +6,11 @@
 
 #include "cancelable.hpp"
 
-/** An awaitable object that can be created directly (without calling an async function) */
+/**
+ * An awaitable object that can be created directly (without calling an async function)
+ * @tparam T value type holded by this promise
+ * @tparam nothrow if true, this promise cannot be rejected ( slightly better performance )
+ **/
 template <typename T = void, bool nothrow = false>
 struct promise final: cancelable {
     promise() = default;
@@ -14,7 +18,9 @@ struct promise final: cancelable {
      * @param cancel_fn a function that cancels this promise
      */
     template <typename CancelFn>
-    promise(CancelFn&& cancel_fn): cancel_fn_(std::move(cancel_fn)) {}
+    promise(CancelFn&& cancel_fn, void* user_data = nullptr)
+        : cancel_fn_(std::move(cancel_fn))
+        , user_data_(user_data) {}
 
     bool await_ready() {
         return result_.index() > 0;
@@ -67,7 +73,8 @@ struct promise final: cancelable {
      * @throw (std::bad_function_call) If the operation doesn't support cancellation
      */
     void cancel() override {
-        return cancel_fn_(this);
+        if (!cancel_fn_) throw std::bad_function_call();
+        return cancel_fn_(this, user_data_);
     }
 
 private:
@@ -77,5 +84,6 @@ private:
         std::conditional_t<std::is_void_v<T>, std::monostate, T>,
         std::conditional_t<!nothrow, std::exception_ptr, std::monostate>
     > result_;
-    std::function<void (promise* self)> cancel_fn_;
+    void (*const cancel_fn_)(promise* self, void* user_data);
+    void* const user_data_;
 };

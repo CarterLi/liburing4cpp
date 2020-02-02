@@ -73,6 +73,8 @@ struct task_promise<void, nothrow> final: task_promise_base<void, nothrow> {
 
 /**
  * An awaitable object that returned by an async function
+ * @tparam T value type holded by this task
+ * @tparam nothrow if true, the coroutine assigned by this task won't throw exceptions ( slightly better performance )
  * @warning do NOT discard this object when returned by some function, or UB WILL happen
  */
 template <typename T = void, bool nothrow = false>

@@ -220,7 +220,7 @@ public:
     ) noexcept {                                                                     \
         auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
         io_uring_prep_##operation(sqe, fd, buf, nbytes, offset, buf_index);          \
-        co_return co_await await_work(sqe, iflags);                                  \
+        return await_work(sqe, iflags);                                              \
     }
 
     /** Read data into a fixed buffer asynchronously
@@ -487,10 +487,10 @@ private:
         io_uring_sqe* sqe,
         uint8_t iflags
     ) noexcept {
-        promise<int, true> p([pring = &ring] (promise<int, true>* self) noexcept {
-            io_uring_sqe *sqe = io_uring_get_sqe_safe(pring);
-            io_uring_prep_rw(IORING_OP_ASYNC_CANCEL, sqe, -1, self, 0, 0);
-        });
+        promise<int, true> p([] (promise<int, true>* self, void* pring) noexcept {
+            io_uring_sqe *sqe = io_uring_get_sqe_safe(static_cast<io_uring *>(pring));
+            io_uring_prep_cancel(sqe, self, 0);
+        }, &ring);
         io_uring_sqe_set_flags(sqe, iflags);
         io_uring_sqe_set_data(sqe, &p);
         co_return co_await p;
@@ -592,7 +592,10 @@ public:
      */
     template <unsigned int N>
     void register_buffers(iovec (&&ioves) [N]) {
-        io_uring_register_buffers(&ring, &ioves[0], N) | panic_on_err("io_uring_register_buffers", false);
+        register_buffers(&ioves[0], N);
+    }
+    void register_buffers(const struct iovec *iovecs, unsigned nr_iovecs) {
+        io_uring_register_buffers(&ring, iovecs, nr_iovecs) | panic_on_err("io_uring_register_buffers", false);
     }
 
     /** Unregister all buffers
