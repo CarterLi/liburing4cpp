@@ -1,12 +1,19 @@
 #pragma once
 
-// Original source:
-// https://github.com/Quuxplusone/coro/blob/master/include/coro/gor_task.h
-
+#if __has_include(<coroutine>)
+#   include <coroutine>
+namespace std::experimental {
+    using std::suspend_always;
+    using std::suspend_never;
+    using std::coroutine_handle;
+}
+#else
+#   include <experimental/coroutine>
+#endif
 #include <exception>
-#include <experimental/coroutine>
 #include <variant>
 #include <array>
+#include <cassert>
 
 #include "cancelable.hpp"
 

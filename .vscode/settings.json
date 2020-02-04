@@ -94,6 +94,7 @@
     "complex": "cpp",
     "typeindex": "cpp",
     "version": "cpp",
-    "forward_list": "cpp"
+    "forward_list": "cpp",
+    "cassert": "cpp"
   }
 }

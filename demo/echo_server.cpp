@@ -39,7 +39,7 @@ task<> accept_connection(io_service& service, int serverfd) {
 #else
                 // Surprisely, following code is about 30% slower then the code above
                 auto tread = service.read_fixed(keyIdx, pbuf, BUF_SIZE, 0, keyIdx, IOSQE_IO_LINK | IOSQE_FIXED_FILE);
-                // If a short read is found, write_fixed will be canceled with -ECANCEL
+                // If a short read is found, write_fixed will be canceled with -ECANCELED
                 int w = co_await service.write_fixed(keyIdx, pbuf, BUF_SIZE, 0, keyIdx, IOSQE_FIXED_FILE);
                 if (w < 0) {
                     int r = tread.get_result();
