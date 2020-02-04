@@ -42,6 +42,7 @@ struct promise final: cancelable {
     }
     T await_resume() const {
         on_resume();
+        assert(result_.index() != 0);
         if constexpr (!nothrow) {
             if (auto* pep = std::get_if<2>(&result_)) {
                 std::rethrow_exception(*pep);

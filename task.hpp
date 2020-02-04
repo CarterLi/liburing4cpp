@@ -28,8 +28,11 @@ struct task_promise_base: cancelable_promise_base {
 
             Awaiter(task_promise_base *me): me_(me) {};
             void await_suspend(std::experimental::coroutine_handle<> caller) const noexcept {
-                if (me_->then) {
-                    me_->then();
+                if (__builtin_expect(me_->result_.index() == 3, false)) {
+                    if (me_->waiter_) {
+                        me_->waiter_.destroy();
+                    }
+                    std::experimental::coroutine_handle<task_promise_base>::from_promise(*me_).destroy();
                 } else if (me_->waiter_) {
                     me_->waiter_.resume();
                 }
@@ -39,13 +42,12 @@ struct task_promise_base: cancelable_promise_base {
     }
     void unhandled_exception() {
         if constexpr (!nothrow) {
+            if (__builtin_expect(result_.index() == 3, false)) return;
             result_.template emplace<2>(std::current_exception());
         } else {
             __builtin_unreachable();
         }
     }
-
-    std::function<void ()> then;
 
 protected:
     friend struct task<T, nothrow>;
@@ -54,7 +56,8 @@ protected:
     std::variant<
         std::monostate,
         std::conditional_t<std::is_void_v<T>, std::monostate, T>,
-        std::conditional_t<!nothrow, std::exception_ptr, std::monostate>
+        std::conditional_t<!nothrow, std::exception_ptr, std::monostate>,
+        std::monostate // indicates that the promise is detached
     > result_;
 };
 
@@ -65,7 +68,12 @@ struct task_promise final: task_promise_base<T, nothrow> {
 
     template <typename U>
     void return_value(U&& u) {
+        if (__builtin_expect(result_.index() == 3, false)) return;
         result_.template emplace<1>(static_cast<U&&>(u));
+    }
+    void return_value(int u) {
+        if (__builtin_expect(result_.index() == 3, false)) return;
+        result_.template emplace<1>(u);
     }
 };
 
@@ -74,6 +82,7 @@ struct task_promise<void, nothrow> final: task_promise_base<void, nothrow> {
     using task_promise_base<void, nothrow>::result_;
 
     void return_void() {
+        if (__builtin_expect(result_.index() == 3, false)) return;
         result_.template emplace<1>(std::monostate {});
     }
 };
@@ -110,8 +119,8 @@ struct task final: cancelable {
 
     /** Get the result hold by this task */
     T get_result() const {
-        assert(done());
         auto& result_ = coro_.promise().result_;
+        assert(result_.index() != 0);
         if constexpr (!nothrow) {
             if (auto* pep = std::get_if<2>(&result_)) {
                 std::rethrow_exception(*pep);
@@ -141,32 +150,14 @@ struct task final: cancelable {
         return *this;
     }
 
-    /** Destroy the task object
-     * @warning It's allowed to destroy the object before the coroutine is done.
-     * @warning The program will try to destroy the internal coroutine handle to avoid memory leaking
-     * @warning But IT'S STILL BUGGY
-     */
+    /** Destroy (when done) or detach (when not done) the task object */
     ~task() {
         if (!coro_) return;
         if (!coro_.done()) {
-            coro_.promise().then = [coro_ = coro_] () mutable noexcept {
-                auto p = coro_.promise();
-                // FIXME: Does this do right thing?
-                if (p.waiter_) {
-                    p.waiter_.destroy();
-                }
-                coro_.destroy();
-            };
+            coro_.promise().result_.template emplace<3>(std::monostate{});
         } else {
             coro_.destroy();
         }
-    }
-
-    // Only for internal usage
-    template <typename Fn>
-    void then(Fn&& fn) {
-        assert(coro_.promise().then || "Fn `then` has been attached");
-        coro_.promise().then = std::move(fn);
     }
 
     /** Attempt to cancel the operation bound in this task
