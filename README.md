@@ -6,9 +6,9 @@ Originally named liburing-http-demo ( this project was originally started for de
 
 ## Requirements
 
-Requires the bleeding-edge linux kernel ( currently 5.5rc ). Since [io_uring](https://git.kernel.dk/cgit/liburing/) is in active development, we will drop old kernel support when every new linux kernel version is released ( before the next LTS version is released, maybe ).
+Requires the latest linux kernel ( currently 5.5 ). Since [io_uring](https://git.kernel.dk/cgit/liburing/) is in active development, we will drop old kernel support when every new linux kernel version is released ( before the next LTS version is released, maybe ).
 
-Tested: `Linux carter-virtual-machine 5.5.0-999-generic #202001122106 SMP Mon Jan 13 02:09:56 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux` with `clang version 9.0.1-6build1`
+Tested: `Linux carter-virtual-machine 5.5.0-999-generic #202002012101 SMP Sun Feb 2 02:07:23 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux` with `clang version 9.0.1-8build1`
 
 ## First glance
 
@@ -23,7 +23,7 @@ int main() {
     // We use IIFE here for simplification
     auto work = [&] () -> task<> {
         // Use Linux syscalls just as what you did before (except a little changes)
-        const str = "Hello world\n"sv;
+        const auto str = "Hello world\n"sv;
         co_await service.write(STDOUT_FILENO, str.data(), str.size(), 0);
     }();
 
@@ -94,7 +94,7 @@ See also https://github.com/frevib/io_uring-echo-server#benchmarks for benchmark
 
 This library is header only. It provides some demos for testing
 
-You must have `liburing` built and installed first, and run `make` in directory `demo`, requires clang++-9. When benchmarking, you may want to build it with optimization: `env CXXFLAGS="-O3 -DNDEBUG -pthread" make`. Note it seems that `-flto` generates wrong code, don't use it ( for now )
+You must have `liburing` built and installed first, and run `make` in directory `demo`, requires `clang++-9`. When benchmarking, you may want to build it with optimization: `make MODE=RELEASE`. Note it seems that `-flto` generates wrong code, don't use it ( for now )
 
 ## License
 
