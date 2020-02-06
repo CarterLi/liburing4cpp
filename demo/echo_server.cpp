@@ -8,53 +8,69 @@
 
 #include "io_service.hpp"
 
+#define NO_FIXED_FILES_AND_BUFFERS
+
 enum {
     BUF_SIZE = 512,
-    MAX_CONN_SIZE = 64,
+    MAX_CONN_SIZE = 256,
 };
 
 int runningCoroutines = 0;
+
+#ifndef NO_FIXED_FILES_AND_BUFFERS
 std::array<iovec, MAX_CONN_SIZE> fixedBuffers;
+#endif
 
 task<> accept_connection(io_service& service, int serverfd) {
+#ifndef NO_FIXED_FILES_AND_BUFFERS
     std::vector<int> availKeys(MAX_CONN_SIZE);
     std::iota(availKeys.rbegin(), availKeys.rend(), 0);
+#endif
 
     while (int clientfd = co_await service.accept(serverfd, nullptr, nullptr)) {
-        [=, &service, &availKeys](int clientfd) -> task<> {
-            const int keyIdx = availKeys.back();
-            availKeys.pop_back();
-            void* pbuf = fixedBuffers[keyIdx].iov_base;
-
-            fmt::print("sockfd {} is accepted; use keyidx: {}; number of running coroutines: {}\n",
-                clientfd, keyIdx, ++runningCoroutines);
-            service.register_files_update(keyIdx, &clientfd, 1);
-
-            while (true) {
-#if 1
-                int r = co_await service.read_fixed(keyIdx, pbuf, BUF_SIZE, 0, keyIdx, IOSQE_FIXED_FILE);
-                if (r <= 0) break;
-                co_await service.write_fixed(keyIdx, pbuf, r, 0, keyIdx, IOSQE_FIXED_FILE);
-#else
-                // Following code is about 30% slower then the code above
-                // See https://github.com/axboe/liburing/issues/67
-                auto tread = service.read_fixed(keyIdx, pbuf, BUF_SIZE, 0, keyIdx, IOSQE_IO_LINK | IOSQE_FIXED_FILE);
-                // If a short read is found, write_fixed will be canceled with -ECANCELED
-                int w = co_await service.write_fixed(keyIdx, pbuf, BUF_SIZE, 0, keyIdx, IOSQE_FIXED_FILE);
-                if (w < 0) {
-                    int r = tread.get_result();
-                    if (r > 0) {
-                        co_await service.write_fixed(keyIdx, pbuf, r, 0, keyIdx, IOSQE_FIXED_FILE);
-                    } else {
-                        break;
-                    }
-                }
+        [=, &service
+#ifndef NO_FIXED_FILES_AND_BUFFERS
+        , &availKeys
 #endif
+        ](int clientfd) -> task<> {
+#ifndef NO_FIXED_FILES_AND_BUFFERS
+            if (__builtin_expect(!availKeys.empty(), true)) {
+                const int keyIdx = availKeys.back();
+                availKeys.pop_back();
+                void* pbuf = fixedBuffers[keyIdx].iov_base;
+
+                fmt::print("sockfd {} is accepted; use keyidx: {}; number of running coroutines: {}\n",
+                    clientfd, keyIdx, ++runningCoroutines);
+                service.register_files_update(keyIdx, &clientfd, 1);
+
+                while (true) {
+                    int r = co_await service.read_fixed(keyIdx, pbuf, BUF_SIZE, 0, keyIdx, IOSQE_FIXED_FILE);
+                    if (r <= 0) break;
+                    co_await service.write_fixed(keyIdx, pbuf, r, 0, keyIdx, IOSQE_FIXED_FILE);
+                }
+                availKeys.push_back(keyIdx);
+            } else {
+#endif
+                fmt::print("sockfd {} is accepted; number of running coroutines: {}\n",
+                    clientfd, ++runningCoroutines);
+
+                std::vector<char> buf(BUF_SIZE);
+                iovec iov = { .iov_base = buf.data(), .iov_len = BUF_SIZE };
+                msghdr msg = { .msg_iov = &iov, .msg_iovlen = 1 };
+
+                while (true) {
+                    int r = co_await service.recvmsg(clientfd, &msg, MSG_NOSIGNAL);
+                    if (r <= 0) break;
+                    iov.iov_len = r;
+                    co_await service.sendmsg(clientfd, &msg, MSG_NOSIGNAL);
+                    iov.iov_len = BUF_SIZE;
+                }
+#ifndef NO_FIXED_FILES_AND_BUFFERS
             }
-            close(clientfd);
+#endif
+            shutdown(clientfd, SHUT_RDWR);
             fmt::print("sockfd {} is closed; number of running coroutines: {}\n",
                 clientfd, --runningCoroutines);
-            availKeys.push_back(keyIdx);
         }(clientfd);
     }
 }
@@ -69,8 +85,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    io_service service;
+    io_service service(MAX_CONN_SIZE);
 
+#ifndef NO_FIXED_FILES_AND_BUFFERS
     std::array<int, MAX_CONN_SIZE> fds;
     std::fill(fds.begin(), fds.end(), -1);
     service.register_files(fds.data(), fds.size());
@@ -80,9 +97,10 @@ int main(int argc, char *argv[]) {
         iov.iov_len = BUF_SIZE;
     }
     service.register_buffers(fixedBuffers.data(), fixedBuffers.size());
+#endif
 
     int sockfd = socket(AF_INET, SOCK_STREAM, 0) | panic_on_err("socket creation", true);
-    on_scope_exit closesock([=]() { close(sockfd); });
+    on_scope_exit closesock([=]() { shutdown(sockfd, SHUT_RDWR); });
 
     if (sockaddr_in addr = {
         .sin_family = AF_INET,
@@ -91,7 +109,7 @@ int main(int argc, char *argv[]) {
         .sin_zero = {},
     }; bind(sockfd, reinterpret_cast<sockaddr *>(&addr), sizeof (sockaddr_in))) panic("socket binding", errno);
 
-    if (listen(sockfd, MAX_CONN_SIZE)) panic("listen", errno);
+    if (listen(sockfd, 512)) panic("listen", errno);
     fmt::print("Listening: {}\n", server_port);
 
     auto work = accept_connection(service, sockfd);
