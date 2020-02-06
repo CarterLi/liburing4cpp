@@ -22,7 +22,7 @@ int main() {
                 auto* ring = &service.get_handle();
                 auto* sqe = io_uring_get_sqe_safe(ring);
                 io_uring_prep_nop(sqe);
-                io_uring_submit_and_wait(ring, 1);
+                io_uring_submit(ring);
 
                 io_uring_cqe *cqe;
                 io_uring_wait_cqe(ring, &cqe);
