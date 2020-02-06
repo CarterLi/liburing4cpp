@@ -18,18 +18,18 @@ task<std::array<T, N>> when_all(std::array<task<T, nothrow>, N> tasks) noexcept(
 
     for (size_t i=0; i<tasks.size(); ++i) {
         waiters[i] = [&](size_t i) mutable -> task<void, true> {
-            try {
-                result[i] = co_await tasks[i];
-            } catch (...) {
-                if constexpr (!nothrow) {
+            if constexpr (!nothrow) {
+                try {
+                    result[i] = co_await tasks[i];
+                } catch (...) {
                     if (ex) co_return;
                     ex = std::current_exception();
                     for (auto& task : tasks) {
                         if (!task.done()) task.cancel();
                     }
-                } else {
-                    __builtin_unreachable();
                 }
+            } else {
+                result[i] = co_await tasks[i];
             }
         }(i);
     }
@@ -93,18 +93,18 @@ task<> when_all(std::array<task<void, nothrow>, N> tasks) {
 
     for (size_t i=0; i<tasks.size(); ++i) {
         waiters[i] = [&](size_t i) mutable -> task<void, true> {
-            try {
-                co_await tasks[i];
-            } catch (...) {
-                if constexpr (!nothrow) {
+            if constexpr (!nothrow) {
+                try {
+                    co_await tasks[i];
+                } catch (...) {
                     if (ex) co_return;
                     ex = std::current_exception();
                     for (auto& task : tasks) {
                         if (!task.done()) task.cancel();
                     }
-                } else {
-                    __builtin_unreachable();
                 }
+            } else {
+                co_await tasks[i];
             }
         }(i);
     }

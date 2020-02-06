@@ -80,11 +80,12 @@ struct promise final: cancelable {
     }
 
     /** Attempt to cancel the operation bound in this promise
-     * @throw (std::bad_function_call) If the operation doesn't support cancellation
+     * @return true if cancelation is supported; false otherwise
      */
-    void cancel() override {
-        if (!cancel_fn_) throw std::bad_function_call();
-        return cancel_fn_(this, user_data_);
+    bool cancel() override {
+        if (!cancel_fn_) return false;
+        cancel_fn_(this, user_data_);
+        return true;
     }
 
 private:

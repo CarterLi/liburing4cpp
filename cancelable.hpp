@@ -9,7 +9,7 @@ struct promise;
  * @warning This is NOT a polymorphic class, its destructor is NOT virtual
  */
 struct cancelable {
-    virtual void cancel() = 0;
+    virtual bool cancel() = 0;
 
 protected:
     inline void on_suspend(cancelable** callee_ref) noexcept {

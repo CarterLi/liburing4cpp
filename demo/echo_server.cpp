@@ -6,7 +6,6 @@
 #include <vector>
 #include <numeric>
 
-#include "when.hpp"
 #include "io_service.hpp"
 
 enum {

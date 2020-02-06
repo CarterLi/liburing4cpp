@@ -4,7 +4,7 @@ MODE ?= DEBUG
 ifeq ($(MODE),DEBUG)
 	CXXFLAGS ?= -O0 -rdynamic -D_LIBCPP_DEBUG_LEVEL=1 -fno-omit-frame-pointer -fsanitize=address
 else
-	CXXFLAGS ?= -O3 -DNDEBUG
+	CXXFLAGS ?= -O3 -DNDEBUG -march=native -mtune=intel
 endif
 
 ifeq ($(CXX_COMPILER),clang++)
@@ -21,6 +21,9 @@ all: $(all_targets)
 
 clean:
 	rm -f $(all_targets)
+
+help:
+	@echo 'make [MODE={DEBUG,RELEASE}] [CXX_COMPILER={gcc|clang++}]'
 
 file_server: file_server.cpp mime_dicts.cpp ../task.hpp ../io_service.hpp ../promise.hpp ../when.hpp ../cancelable.hpp
 	$(CXX_COMPILER) ./file_server.cpp ./mime_dicts.cpp -o file_server $(CXXFLAGS)

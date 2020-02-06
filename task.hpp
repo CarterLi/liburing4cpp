@@ -162,11 +162,11 @@ struct task final: cancelable {
 
     /** Attempt to cancel the operation bound in this task
      * @note task itself doesn't support cancellation, the request is forwarded to inner promise.
-     * @throw (std::bad_function_call) If the operation doesn't support cancellation
+     * @return true if cancelation is supported; false otherwise
      */
-    void cancel() override {
+    bool cancel() override {
         assert(coro_.promise().callee_);
-        coro_.promise().callee_->cancel();
+        return coro_.promise().callee_->cancel();
     }
 
 private:

@@ -1,11 +1,8 @@
 #include <chrono>
 #include <thread>
-#include <fmt/chrono.h> // https://github.com/fmtlib/fmt
+#include <fmt/format.h> // https://github.com/fmtlib/fmt
 
-#include "when.hpp"
 #include "io_service.hpp"
-
-using namespace std::chrono_literals;
 
 int main() {
     io_service service;
