@@ -44,6 +44,7 @@ task<> accept_connection(io_service& service, int serverfd) {
                 service.register_files_update(keyIdx, &clientfd, 1);
 
                 while (true) {
+                    co_await service.poll(keyIdx, POLLIN, IOSQE_FIXED_FILE);
                     int r = co_await service.read_fixed(keyIdx, pbuf, BUF_SIZE, 0, keyIdx, IOSQE_FIXED_FILE);
                     if (r <= 0) break;
                     co_await service.write_fixed(keyIdx, pbuf, r, 0, keyIdx, IOSQE_FIXED_FILE);
@@ -59,6 +60,7 @@ task<> accept_connection(io_service& service, int serverfd) {
                 msghdr msg = { .msg_iov = &iov, .msg_iovlen = 1 };
 
                 while (true) {
+                    co_await service.poll(clientfd, POLLIN);
                     int r = co_await service.recvmsg(clientfd, &msg, MSG_NOSIGNAL);
                     if (r <= 0) break;
                     iov.iov_len = r;
