@@ -36,6 +36,27 @@ int main() {
 }
 ```
 
+## Performance suggestions:
+
+### For non-disk I/O, always `POLL` before `READ`/`RECV`.  
+
+For operations that may block, kernel will punt them into a kernel worker called `io-wq`, which turns out to have high overhead cost. Always make sure that the fd to read is ready to read.
+
+
+### Carefully use `IOSQE_IO_LINK`.
+
+`IOSQE_IO_LINK` isn't something that make the operation zero-copy, but a way to reduce the number of `io_uring_enter` syscalls. Less syscalls means less context switches, which is good, but operations marked `IOSQE_IO_LINK` will still awake `io_uring_enter` ( ie `io_uring_wait_cqe` ). Users usually have nothing to do but to wait the whole link chain being completed by issuing another `io_uring_enter` syscall. So if you can't control the number of cqe to wait ( ie use `io_uring_wait_cqes` ), don't use `IOSQE_IO_LINK`.
+
+For `READ-WRITE` chain, be sure to check `-ECANCELED` result of `WRITE` operation ( a short read is considered an error in a link chain which will cancel operations after the operation ). Never use `IOSQE_IO_LINK` for `RECV-SEND` chain because you can't control the number of bytes to send (a short read for `RECV` is NOT considered an error until Linux 5.5 at least. I don't know why).
+
+### Don't use FIXED_FILE & FIXED_BUFFER. 
+They have little performace boost but increase much code complexity. Because the number of files and buffers can be registered has limitation, you almost always have to write fallbacks. In addition, you have to reuse the old file *slots* and buffers. See example: https://github.com/CarterLi/liburing4cpp/blob/daf6261419f39aae9a6624f0a271242b1e228744/demo/echo_server.cpp#L37
+
+
+### Don't use `io_uring_submit_and_wait(1)`.
+
+`io_uring_submit_and_wait(&ring, 1); io_uring_wait_cqe(&ring, &cqe);` turns out to be slower than `io_uring_submit(&ring); io_uring_wait_cqe(&ring, &cqe)`. Details unknown.
+
 ## Project Structure
 
 ### task.hpp
