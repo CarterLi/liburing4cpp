@@ -36,7 +36,61 @@ int main() {
 }
 ```
 
+## Benchmarks
+
+* VMWare Ubuntu Focal Fossa 20.04 (development branch)
+* Linux carter-virtual-machine 5.5.0-999-generic #202002070204 SMP Fri Feb 7 02:09:27 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux
+* 4 virtual cores
+* Macbook pro i7 2.5GHz/16GB
+* Compiler: clang version 9.0.1-8build1
+
+### demo/bench
+
+```
+service.yield:        5802611604
+plain IORING_OP_NOP:  5430090005
+this_thread::yield:   4794909829
+pause:                  26623780
+```
+
+### demo/echo_server
+
+* demo/echo_server 12345 ( C++, uses coroutines )
+* [./io_uring_echo_server 12345](https://github.com/CarterLi/io_uring-echo-server) ( C, raw )
+
+with `rust_echo_bench`: https://github.com/haraldh/rust_echo_bench
+
+#### command: `cargo run --release -- -c 50`
+
+LANG | USE_POLL | USE_FIXED |           operations |     1st |     2nd |     3rd |     mid |   rate
+:-:  | :-:      | :-:       |                   -: |      -: |      -: |      -: |      -: |     -:
+C    | 1        | -         | POLL-RECVMSG-SENDMSG |  137656 |  133897 |  140219 |  133897 | 100.0%
+C++  | 1        | 0         | POLL-RECVMSG-SENDMSG |  122892 |   97884 |  137922 |  122892 |  91.8%
+C++  | 1        | 1         |  POLL-READ_F-WRITE_F |  125645 |  120349 |  117123 |  120349 |  89.9%
+
+LANG | USE_POLL | USE_FIXED |           operations |     1st |     2nd |     3rd |     mid |   rate
+:-:  | :-:      | :-:       |                   -: |      -: |      -: |      -: |      -: |     -:
+C    | 0        | -         |      RECVMSG-SENDMSG |   97500 |   84620 |   89185 |   89185 | 100.0%
+C++  | 0        | 0         |      RECVMSG-SENDMSG |   95357 |   97559 |  100073 |   97559 | 109.4%
+C++  | 0        | 1         |       READ_F-WRITE_F |  101917 |  102845 |   95126 |  101917 | 114.3%
+
+#### command: `cargo run --release -- -c 1`
+
+LANG | USE_POLL | USE_FIXED |           operations |     1st |     2nd |     3rd |     mid |   rate
+:-:  | :-:      | :-:       |                   -: |      -: |      -: |      -: |      -: |     -:
+C    | 1        | -         | POLL-RECVMSG-SENDMSG |   16637 |   14697 |   13854 |   14697 | 100.0%
+C++  | 1        | 0         | POLL-RECVMSG-SENDMSG |   14943 |   12507 |   12984 |   12984 |  88.3%
+C++  | 1        | 1         |  POLL-READ_F-WRITE_F |   15122 |   13482 |   17776 |   15122 | 102.9%
+
+LANG | USE_POLL | USE_FIXED |           operations |     1st |     2nd |     3rd |     mid |   rate
+:-:  | :-:      | :-:       |                   -: |      -: |      -: |      -: |      -: |     -:
+C    | 0        | -         |      RECVMSG-SENDMSG |   21234 |   24287 |   20465 |   21234 | 100.0%
+C++  | 0        | 0         |      RECVMSG-SENDMSG |   55424 |   49969 |   48218 |   49969 | 235.3%
+C++  | 0        | 1         |       READ_F-WRITE_F |   57104 |   42985 |   58549 |   57104 | 268.9%
+
 ## Performance suggestions:
+
+Until Linux 5.5 at least
 
 ### For non-disk I/O, always `POLL` before `READ`/`RECV`.  
 
@@ -47,11 +101,12 @@ For operations that may block, kernel will punt them into a kernel worker called
 
 `IOSQE_IO_LINK` isn't something that make the operation zero-copy, but a way to reduce the number of `io_uring_enter` syscalls. Less syscalls means less context switches, which is good, but operations marked `IOSQE_IO_LINK` will still awake `io_uring_enter` ( ie `io_uring_wait_cqe` ). Users usually have nothing to do but to wait the whole link chain being completed by issuing another `io_uring_enter` syscall. So if you can't control the number of cqe to wait ( ie use `io_uring_wait_cqes` ), don't use `IOSQE_IO_LINK`.
 
-For `READ-WRITE` chain, be sure to check `-ECANCELED` result of `WRITE` operation ( a short read is considered an error in a link chain which will cancel operations after the operation ). Never use `IOSQE_IO_LINK` for `RECV-SEND` chain because you can't control the number of bytes to send (a short read for `RECV` is NOT considered an error until Linux 5.5 at least. I don't know why).
+For `READ-WRITE` chain, be sure to check `-ECANCELED` result of `WRITE` operation ( a short read is considered an error in a link chain which will cancel operations after the operation ). Never use `IOSQE_IO_LINK` for `RECV-SEND` chain because you can't control the number of bytes to send (a short read for `RECV` is NOT considered an error. I don't know why).
 
 ### Don't use FIXED_FILE & FIXED_BUFFER. 
 They have little performace boost but increase much code complexity. Because the number of files and buffers can be registered has limitation, you almost always have to write fallbacks. In addition, you have to reuse the old file *slots* and buffers. See example: https://github.com/CarterLi/liburing4cpp/blob/daf6261419f39aae9a6624f0a271242b1e228744/demo/echo_server.cpp#L37
 
+Note `RECV`/`SEND` have no `_fixed` variant.
 
 ### Don't use `io_uring_submit_and_wait(1)`.
 

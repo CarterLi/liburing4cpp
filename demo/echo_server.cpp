@@ -8,32 +8,33 @@
 
 #include "io_service.hpp"
 
-#define NO_FIXED_FILES_AND_BUFFERS
+#define USE_FIXED_FILES_AND_BUFFERS 1
+#define USE_POLL 0
 
 enum {
-    BUF_SIZE = 512,
-    MAX_CONN_SIZE = 256,
+    BUF_SIZE = 1024,
+    MAX_CONN_SIZE = 128,
 };
 
 int runningCoroutines = 0;
 
-#ifndef NO_FIXED_FILES_AND_BUFFERS
+#if USE_FIXED_FILES_AND_BUFFERS
 std::array<iovec, MAX_CONN_SIZE> fixedBuffers;
 #endif
 
 task<> accept_connection(io_service& service, int serverfd) {
-#ifndef NO_FIXED_FILES_AND_BUFFERS
+#if USE_FIXED_FILES_AND_BUFFERS
     std::vector<int> availKeys(MAX_CONN_SIZE);
     std::iota(availKeys.rbegin(), availKeys.rend(), 0);
 #endif
 
     while (int clientfd = co_await service.accept(serverfd, nullptr, nullptr)) {
         [=, &service
-#ifndef NO_FIXED_FILES_AND_BUFFERS
+#if USE_FIXED_FILES_AND_BUFFERS
         , &availKeys
 #endif
         ](int clientfd) -> task<> {
-#ifndef NO_FIXED_FILES_AND_BUFFERS
+#if USE_FIXED_FILES_AND_BUFFERS
             if (__builtin_expect(!availKeys.empty(), true)) {
                 const int keyIdx = availKeys.back();
                 availKeys.pop_back();
@@ -44,7 +45,9 @@ task<> accept_connection(io_service& service, int serverfd) {
                 service.register_files_update(keyIdx, &clientfd, 1);
 
                 while (true) {
+#   if USE_POLL
                     co_await service.poll(keyIdx, POLLIN, IOSQE_FIXED_FILE);
+#   endif
                     int r = co_await service.read_fixed(keyIdx, pbuf, BUF_SIZE, 0, keyIdx, IOSQE_FIXED_FILE);
                     if (r <= 0) break;
                     co_await service.write_fixed(keyIdx, pbuf, r, 0, keyIdx, IOSQE_FIXED_FILE);
@@ -60,14 +63,16 @@ task<> accept_connection(io_service& service, int serverfd) {
                 msghdr msg = { .msg_iov = &iov, .msg_iovlen = 1 };
 
                 while (true) {
+#   if USE_POLL
                     co_await service.poll(clientfd, POLLIN);
+#   endif
                     int r = co_await service.recvmsg(clientfd, &msg, MSG_NOSIGNAL);
                     if (r <= 0) break;
                     iov.iov_len = r;
                     co_await service.sendmsg(clientfd, &msg, MSG_NOSIGNAL);
                     iov.iov_len = BUF_SIZE;
                 }
-#ifndef NO_FIXED_FILES_AND_BUFFERS
+#if USE_FIXED_FILES_AND_BUFFERS
             }
 #endif
             shutdown(clientfd, SHUT_RDWR);
@@ -89,7 +94,7 @@ int main(int argc, char *argv[]) {
 
     io_service service(MAX_CONN_SIZE);
 
-#ifndef NO_FIXED_FILES_AND_BUFFERS
+#if USE_FIXED_FILES_AND_BUFFERS
     std::array<int, MAX_CONN_SIZE> fds;
     std::fill(fds.begin(), fds.end(), -1);
     service.register_files(fds.data(), fds.size());
@@ -111,7 +116,7 @@ int main(int argc, char *argv[]) {
         .sin_zero = {},
     }; bind(sockfd, reinterpret_cast<sockaddr *>(&addr), sizeof (sockaddr_in))) panic("socket binding", errno);
 
-    if (listen(sockfd, 512)) panic("listen", errno);
+    if (listen(sockfd, MAX_CONN_SIZE * 2)) panic("listen", errno);
     fmt::print("Listening: {}\n", server_port);
 
     auto work = accept_connection(service, sockfd);

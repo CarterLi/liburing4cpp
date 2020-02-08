@@ -12,6 +12,7 @@ namespace std::experimental {
 #endif
 #include <variant>
 #include <optional>
+#include <cassert>
 
 #include "cancelable.hpp"
 
