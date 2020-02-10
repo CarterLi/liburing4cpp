@@ -56,13 +56,5 @@ int main(int argc, char* argv[]) {
     io_service service;
 
     // Start main coroutine ( for co_await )
-    auto work = start_work(service, argv[1]);
-
-    // Event loop
-    while (!work.done()) {
-        auto [promise, res] = service.wait_event();
-        promise->resolve(res);
-    }
-
-    work.get_result();
+    service.run(start_work(service, argv[1]));
 }

@@ -16,7 +16,7 @@
 #include "task.hpp"
 
 #ifndef LINUX_KERNEL_VERSION
-#   define LINUX_KERNEL_VERSION 55
+#   define LINUX_KERNEL_VERSION 56
 #endif
 
 /** Fill an iovec struct using buf & size */
@@ -103,7 +103,8 @@ inline task<int> operator |(task<int, nothrow> tret, panic_on_err&& poe) {
  */
 [[nodiscard]]
 io_uring_sqe* io_uring_get_sqe_safe(io_uring *ring) noexcept {
-    if (auto* sqe = io_uring_get_sqe(ring)) {
+    auto* sqe = io_uring_get_sqe(ring);
+    if (__builtin_expect(!!sqe, true)) {
         return sqe;
     } else {
         io_uring_submit(ring);
@@ -502,61 +503,29 @@ public:
      * @see io_uring_enter(2)
      * @return a pair of promise pointer (used for resuming suspended coroutine) and retcode of finished command
      */
-    [[nodiscard]]
-    std::pair<promise<int, true> *, int> wait_event() {
-        io_uring_cqe* cqe;
-        promise<int, true>* coro;
-        io_uring_submit(&ring);
+    template <typename T, bool nothrow>
+    T run(const task<T, nothrow>& t) noexcept(nothrow) {
+        while (!t.done()) {
+            io_uring_submit_and_wait(&ring, 1);
 
-        do {
-            io_uring_wait_cqe(&ring, &cqe) | panic_on_err("wait_cqe", false);
-            io_uring_cqe_seen(&ring, cqe);
-            coro = static_cast<promise<int, true> *>(io_uring_cqe_get_data(cqe));
-        } while (coro == nullptr);
+            io_uring_cqe *cqe;
+            unsigned head, cqe_count = 0;
 
-        return { coro, cqe->res };
-    }
-
-public:
-    /** Peek an event, if any
-     * @see io_uring_peek_cqe
-     * @return a pair of promise pointer (used for resuming suspended coroutine) and retcode of finished command
-     * @return optional. std::nullopt if no events are ready
-     */
-    [[nodiscard]]
-    std::optional<std::pair<promise<int, true> *, int>> peek_event() noexcept {
-        for (io_uring_cqe* cqe; io_uring_peek_cqe(&ring, &cqe) >= 0 && cqe; ) {
-            io_uring_cqe_seen(&ring, cqe);
-
-            if (auto* coro = static_cast<promise<int, true> *>(io_uring_cqe_get_data(cqe))) {
-                return std::make_pair(coro, cqe->res);
+            io_uring_for_each_cqe(&ring, head, cqe) {
+                auto coro = static_cast<promise<int, true> *>(io_uring_cqe_get_data(cqe));
+                if (coro) coro->resolve(cqe->res);
+                ++cqe_count;
+                if (__builtin_expect(cqe_count == 128, false)) {
+                    io_uring_cq_advance(&ring, cqe_count);
+                    cqe_count = 0;
+                    io_uring_submit(&ring);
+                }
             }
+
+            io_uring_cq_advance(&ring, cqe_count);
         }
-        return std::nullopt;
-    }
 
-    /** Wait for an event, with timeout
-     * @see io_uring_wait_cqe_timeout
-     * @return a pair of promise pointer (used for resuming suspended coroutine) and retcode of finished command
-     * @return optional. std::nullopt if no events are ready
-     */
-    [[nodiscard]]
-    std::optional<std::pair<promise<int, true> *, int>> timedwait_event(__kernel_timespec timeout) noexcept {
-        if  (auto result = peek_event()) return result;
-        if (io_uring_cqe* cqe; io_uring_wait_cqe_timeout(&ring, &cqe, &timeout) >= 0 && cqe) {
-            io_uring_cqe_seen(&ring, cqe);
-
-            if (auto* coro = static_cast<promise<int, true> *>(io_uring_cqe_get_data(cqe))) {
-                return std::make_pair(coro, cqe->res);
-            }
-            return peek_event();
-        }
-        return std::nullopt;
-    }
-
-    [[nodiscard]]
-    inline std::optional<std::pair<promise<int, true> *, int>> timedwait_event(std::chrono::nanoseconds dur) {
-        return timedwait_event(dur2ts(dur));
+        return t.get_result();
     }
 
 public:

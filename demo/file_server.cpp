@@ -148,19 +148,5 @@ int main(int argc, char* argv[]) {
     io_service service;
 
     // Start main coroutine ( for co_await )
-    auto work = accept_connection(service, sockfd, dirfd);
-
-    // Event loop
-    while (!work.done()) {
-        if (auto some = service.timedwait_event(1s)) {
-            auto [promise, res] = some.value();
-
-            // Found a finished event, go back to its coroutine.
-            promise->resolve(res);
-        } else {
-            fmt::print("{:%T}: PING!\n", std::chrono::system_clock::now().time_since_epoch());
-        }
-    }
-
-    work.get_result();
+    service.run(accept_connection(service, sockfd, dirfd));
 }

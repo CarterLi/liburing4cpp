@@ -87,7 +87,7 @@ int main() {
     io_service service;
     using namespace std::chrono_literals;
 
-    auto work = [&] () -> task<> {
+    service.run([&] () -> task<> {
         int efd = eventfd(0, EFD_CLOEXEC | EFD_SEMAPHORE);
         eventfd_t v1 = -1, v2 = -1;
         invoke(service, [=]() noexcept {
@@ -99,10 +99,5 @@ int main() {
             service.read(efd, &v2, sizeof(v2), 0),
         });
         fmt::print("{},{}\n", v1, v2);
-    }();
-
-    while (!work.done()) {
-        auto [promise, res] = service.wait_event();
-        promise->resolve(res);
-    }
+    }());
 }

@@ -8,7 +8,7 @@ int main() {
     io_service service;
     const auto iteration = 10000000;
 
-    auto work = [] (io_service& service) -> task<> {
+    service.run([] (io_service& service) -> task<> {
         {
             auto start = std::chrono::high_resolution_clock::now();
             for (int i = 0; i < iteration; ++i) {
@@ -44,13 +44,5 @@ int main() {
             }
             fmt::print("{:<20}{:>12}\n", "pause:", (std::chrono::high_resolution_clock::now() - start).count());
         }
-    }(service);
-
-    while (!work.done()) {
-        auto [promise, res] = service.wait_event();
-
-        promise->resolve(res);
-    }
-
-    work.get_result();
+    }(service));
 }

@@ -59,15 +59,5 @@ int main(int argc, char *argv[]) {
     service.register_files({ infd, outfd });
     on_scope_exit unreg_file([&]() { service.unregister_files(); });
 
-    auto work = copy_file(service, insize);
-
-    // Event loop
-    while (!work.done()) {
-        auto [promise, res] = service.wait_event();
-
-        // Found a finished event, go back to its coroutine.
-        promise->resolve(res);
-    }
-
-    work.get_result();
+    service.run(copy_file(service, insize));
 }

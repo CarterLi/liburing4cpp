@@ -8,11 +8,11 @@
 
 #include "io_service.hpp"
 
-#define USE_FIXED_FILES_AND_BUFFERS 1
-#define USE_POLL 0
+#define USE_FIXED_FILES_AND_BUFFERS 0
+#define USE_LINK 1
 
 enum {
-    BUF_SIZE = 1024,
+    BUF_SIZE = 512,
     MAX_CONN_SIZE = 128,
 };
 
@@ -45,12 +45,22 @@ task<> accept_connection(io_service& service, int serverfd) {
                 service.register_files_update(keyIdx, &clientfd, 1);
 
                 while (true) {
-#   if USE_POLL
+#   if USE_LINK
+                    service.poll(keyIdx, POLLIN, IOSQE_FIXED_FILE | IOSQE_IO_LINK);
+                    auto tread = service.read_fixed(keyIdx, pbuf, BUF_SIZE, 0, keyIdx, IOSQE_IO_LINK | IOSQE_FIXED_FILE);
+                    // If a short read is found, write_fixed will be canceled with -ECANCELED
+                    int w = co_await service.write_fixed(keyIdx, pbuf, BUF_SIZE, 0, keyIdx, IOSQE_FIXED_FILE);
+                    if (w < 0) {
+                        int r = tread.get_result();
+                        if (r <= 0) break;
+                        co_await service.write_fixed(keyIdx, pbuf, r, 0, keyIdx, IOSQE_FIXED_FILE);
+                    }
+#   else
                     co_await service.poll(keyIdx, POLLIN, IOSQE_FIXED_FILE);
-#   endif
                     int r = co_await service.read_fixed(keyIdx, pbuf, BUF_SIZE, 0, keyIdx, IOSQE_FIXED_FILE);
                     if (r <= 0) break;
                     co_await service.write_fixed(keyIdx, pbuf, r, 0, keyIdx, IOSQE_FIXED_FILE);
+#   endif
                 }
                 availKeys.push_back(keyIdx);
             } else {
@@ -59,18 +69,15 @@ task<> accept_connection(io_service& service, int serverfd) {
                     clientfd, ++runningCoroutines);
 
                 std::vector<char> buf(BUF_SIZE);
-                iovec iov = { .iov_base = buf.data(), .iov_len = BUF_SIZE };
-                msghdr msg = { .msg_iov = &iov, .msg_iovlen = 1 };
-
                 while (true) {
-#   if USE_POLL
+#   if USE_LINK
+                    service.poll(clientfd, POLLIN, IOSQE_IO_LINK);
+#   else
                     co_await service.poll(clientfd, POLLIN);
 #   endif
-                    int r = co_await service.recvmsg(clientfd, &msg, MSG_NOSIGNAL);
+                    int r = co_await service.recv(clientfd, buf.data(), BUF_SIZE, MSG_NOSIGNAL);
                     if (r <= 0) break;
-                    iov.iov_len = r;
-                    co_await service.sendmsg(clientfd, &msg, MSG_NOSIGNAL);
-                    iov.iov_len = BUF_SIZE;
+                    co_await service.send(clientfd, buf.data(), r, MSG_NOSIGNAL);
                 }
 #if USE_FIXED_FILES_AND_BUFFERS
             }
@@ -119,12 +126,5 @@ int main(int argc, char *argv[]) {
     if (listen(sockfd, MAX_CONN_SIZE * 2)) panic("listen", errno);
     fmt::print("Listening: {}\n", server_port);
 
-    auto work = accept_connection(service, sockfd);
-
-    while (!work.done()) {
-        auto [promise, res] = service.wait_event();
-        promise->resolve(res);
-    }
-
-    work.get_result();
+    service.run(accept_connection(service, sockfd));
 }

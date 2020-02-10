@@ -9,7 +9,7 @@ using namespace std::chrono_literals;
 int main() {
     io_service service;
 
-    auto work = [] (io_service& service) -> task<> {
+    service.run([] (io_service& service) -> task<> {
         auto delayAndPrint = [&] (int second, uint8_t iflags = 0) -> task<> {
             co_await service.timeout({ second, 0 }, iflags) | panic_on_err("timeout", false);
             fmt::print("{:%T}: delayed {}s\n", std::chrono::system_clock::now().time_since_epoch(), second);
@@ -48,16 +48,5 @@ int main() {
         delayAndPrint(2, IOSQE_IO_HARDLINK);
         co_await delayAndPrint(3);
         fmt::print("io link end, should wait 6s\n");
-    }(service);
-
-    // Event loop
-    while (!work.done()) {
-        auto [promise, res] = service.wait_event();
-
-        // Found a finished event, go back to its coroutine.
-        promise->resolve(res);
-    }
-
-    // exception ( if any ) will be thrown here
-    work.get_result();
+    }(service));
 }
