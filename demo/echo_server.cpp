@@ -9,7 +9,7 @@
 #include "io_service.hpp"
 
 #define USE_FIXED_FILES_AND_BUFFERS 0
-#define USE_LINK 1
+#define USE_LINK 0
 
 enum {
     BUF_SIZE = 512,

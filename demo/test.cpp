@@ -4,14 +4,12 @@
 #include "when.hpp"
 #include "io_service.hpp"
 
-using namespace std::chrono_literals;
-
 int main() {
     io_service service;
 
     service.run([] (io_service& service) -> task<> {
         auto delayAndPrint = [&] (int second, uint8_t iflags = 0) -> task<> {
-            co_await service.timeout({ second, 0 }, iflags) | panic_on_err("timeout", false);
+            co_await service.timeout(std::chrono::seconds(second), iflags) | panic_on_err("timeout", false);
             fmt::print("{:%T}: delayed {}s\n", std::chrono::system_clock::now().time_since_epoch(), second);
         };
 

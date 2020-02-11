@@ -27,9 +27,8 @@ struct promise final: cancelable {
     /** Create a promise with cancellation support
      * @param cancel_fn a function that cancels this promise
      */
-    template <typename CancelFn>
-    promise(CancelFn&& cancel_fn, void* user_data = nullptr)
-        : cancel_fn_(std::move(cancel_fn))
+    promise(void (* cancel_fn)(promise* self, void* user_data), void* user_data)
+        : cancel_fn_(cancel_fn)
         , user_data_(user_data) {}
 
     bool await_ready() {

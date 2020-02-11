@@ -66,11 +66,10 @@ void panic(std::string_view sv, int err) {
     // print out all the frames to stderr
     fprintf(stderr, "Error: errno %d:\n", err);
     backtrace_symbols_fd(array, size, STDERR_FILENO);
+
+    // __asm__("int $3");
 #endif
 
-    if (err == EPIPE) {
-        throw std::runtime_error("Broken pipe: client socket is closed");
-    }
     throw std::system_error(err, std::generic_category(), sv.data());
 }
 
@@ -97,23 +96,6 @@ inline task<int> operator |(task<int, nothrow> tret, panic_on_err&& poe) {
     co_return (co_await tret) | std::move(poe);
 }
 
-/** Get a sqe pointer that can never be NULL
- * @param ring pointer to inited io_uring struct
- * @return pointer to `io_uring_sqe` struct (not NULL)
- */
-[[nodiscard]]
-io_uring_sqe* io_uring_get_sqe_safe(io_uring *ring) noexcept {
-    auto* sqe = io_uring_get_sqe(ring);
-    if (__builtin_expect(!!sqe, true)) {
-        return sqe;
-    } else {
-        io_uring_submit(ring);
-        sqe = io_uring_get_sqe(ring);
-        assert(sqe && "sqe should not be NULL");
-        return sqe;
-    }
-}
-
 class io_service {
 public:
     /** Init io_service / io_uring object
@@ -137,14 +119,14 @@ public:
 public:
 
 #define DEFINE_AWAIT_OP(operation)                                                   \
-    task<int, true> operation(                                                             \
+    task<int, true> operation(                                                       \
         int fd,                                                                      \
         iovec* iovecs,                                                               \
         unsigned nr_vecs,                                                            \
         off_t offset,                                                                \
         uint8_t iflags = 0                                                           \
     ) noexcept {                                                                     \
-        auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
+        auto* sqe = io_uring_get_sqe_safe();                                         \
         io_uring_prep_##operation(sqe, fd, iovecs, nr_vecs, offset);                 \
         return await_work(sqe, iflags);                                              \
     }                                                                                \
@@ -175,7 +157,7 @@ public:
         off_t offset,                                                                \
         uint8_t iflags = 0                                                           \
     ) {                                                                              \
-        auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
+        auto* sqe = io_uring_get_sqe_safe();                                         \
         io_uring_prep_##operation(sqe, fd, const_cast<void *>(buf), nbytes, offset); \
         return await_work(sqe, iflags);                                              \
     }
@@ -219,7 +201,7 @@ public:
         int buf_index,                                                               \
         uint8_t iflags = 0                                                           \
     ) noexcept {                                                                     \
-        auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
+        auto* sqe = io_uring_get_sqe_safe();                                         \
         io_uring_prep_##operation(sqe, fd, buf, nbytes, offset, buf_index);          \
         return await_work(sqe, iflags);                                              \
     }
@@ -254,7 +236,7 @@ public:
         unsigned fsync_flags,
         uint8_t iflags = 0
     ) noexcept {
-        auto* sqe = io_uring_get_sqe_safe(&ring);
+        auto* sqe = io_uring_get_sqe_safe();
         io_uring_prep_fsync(sqe, fd, fsync_flags);
         return await_work(sqe, iflags);
     }
@@ -272,7 +254,7 @@ public:
         unsigned sync_range_flags,
         uint8_t iflags = 0
     ) noexcept {
-        auto* sqe = io_uring_get_sqe_safe(&ring);
+        auto* sqe = io_uring_get_sqe_safe();
         io_uring_prep_rw(IORING_OP_SYNC_FILE_RANGE, sqe, fd, nullptr, nbytes, offset);
         sqe->sync_range_flags = sync_range_flags;
         return await_work(sqe, iflags);
@@ -285,7 +267,7 @@ public:
         uint32_t flags,                                                              \
         uint8_t iflags = 0                                                           \
     ) noexcept {                                                                     \
-        auto* sqe = io_uring_get_sqe_safe(&ring);                                    \
+        auto* sqe = io_uring_get_sqe_safe();                                         \
         io_uring_prep_##operation(sqe, sockfd, msg, flags);                          \
         return await_work(sqe, iflags);                                              \
     }                                                                                \
@@ -316,7 +298,7 @@ public:
         uint32_t flags,                                                                \
         uint8_t iflags = 0                                                             \
     ) noexcept {                                                                       \
-        auto* sqe = io_uring_get_sqe_safe(&ring);                                      \
+        auto* sqe = io_uring_get_sqe_safe();                                           \
         io_uring_prep_##operation(sqe, sockfd, const_cast<void *>(buf), nbytes, flags);\
         return await_work(sqe, iflags);                                                \
     }
@@ -363,7 +345,7 @@ public:
         short poll_mask,
         uint8_t iflags = 0
     ) noexcept {
-        auto* sqe = io_uring_get_sqe_safe(&ring);
+        auto* sqe = io_uring_get_sqe_safe();
         io_uring_prep_poll_add(sqe, fd, poll_mask);
         return await_work(sqe, iflags);
     }
@@ -376,7 +358,7 @@ public:
     task<int, true> yield(
         uint8_t iflags = 0
     ) noexcept {
-        auto* sqe = io_uring_get_sqe_safe(&ring);
+        auto* sqe = io_uring_get_sqe_safe();
         io_uring_prep_nop(sqe);
         return await_work(sqe, iflags);
     }
@@ -394,7 +376,7 @@ public:
         int flags = 0,
         uint8_t iflags = 0
     ) noexcept {
-        auto* sqe = io_uring_get_sqe_safe(&ring);
+        auto* sqe = io_uring_get_sqe_safe();
         io_uring_prep_accept(sqe, fd, addr, addrlen, flags);
         return await_work(sqe, iflags);
     }
@@ -412,7 +394,7 @@ public:
         int flags = 0,
         uint8_t iflags = 0
     ) noexcept {
-        auto* sqe = io_uring_get_sqe_safe(&ring);
+        auto* sqe = io_uring_get_sqe_safe();
         io_uring_prep_connect(sqe, fd, addr, addrlen);
         return await_work(sqe, iflags);
     }
@@ -424,14 +406,11 @@ public:
      * @return a task object for awaiting
      */
     task<int, true> timeout(
-        __kernel_timespec ts,
+        __kernel_timespec *ts,
         uint8_t iflags = 0
     ) noexcept {
-        auto* sqe = io_uring_get_sqe_safe(&ring);
-        // Everytime we pass pointers into other function,
-        // we MUST use co_return co_await to insure that variable
-        // isn't destructed before await_work truly returns
-        io_uring_prep_timeout(sqe, &ts, 0, 0);
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_timeout(sqe, ts, 0, 0);
         co_return co_await await_work(sqe, iflags);
     }
 
@@ -439,7 +418,11 @@ public:
         std::chrono::nanoseconds dur,
         uint8_t iflags = 0
     ) noexcept {
-        return timeout(dur2ts(dur), iflags);
+        __kernel_timespec ts = dur2ts(dur);
+        // Everytime we pass pointers into other function,
+        // we MUST use co_return co_await to insure that variable
+        // isn't destructed before await_work truly returns
+        co_return co_await timeout(&ts, iflags);
     }
 
     /** Open and possibly create a file asynchronously
@@ -455,7 +438,7 @@ public:
         uint8_t iflags = 0
     ) noexcept {
 #if LINUX_KERNEL_VERSION >= 56
-        auto* sqe = io_uring_get_sqe_safe(&ring);
+        auto* sqe = io_uring_get_sqe_safe();
         io_uring_prep_openat(sqe, dfd, path, flags, mode);
         return await_work(sqe, iflags);
 #else
@@ -474,7 +457,7 @@ public:
         uint8_t iflags = 0
     ) noexcept {
 #if LINUX_KERNEL_VERSION >= 56
-        auto* sqe = io_uring_get_sqe_safe(&ring);
+        auto* sqe = io_uring_get_sqe_safe();
         io_uring_prep_close(sqe, fd);
         return await_work(sqe, iflags);
 #else
@@ -488,16 +471,39 @@ private:
         io_uring_sqe* sqe,
         uint8_t iflags
     ) noexcept {
-        promise<int, true> p([] (promise<int, true>* self, void* pring) noexcept {
-            io_uring_sqe *sqe = io_uring_get_sqe_safe(static_cast<io_uring *>(pring));
+        promise<int, true> p([] (promise<int, true>* self, void* user_data) noexcept {
+            auto* service = static_cast<io_service *>(user_data);
+            io_uring_sqe *sqe = service->io_uring_get_sqe_safe();
             io_uring_prep_cancel(sqe, self, 0);
-        }, &ring);
+        }, this);
         io_uring_sqe_set_flags(sqe, iflags);
         io_uring_sqe_set_data(sqe, &p);
         co_return co_await p;
     }
 
 public:
+    /** Get a sqe pointer that can never be NULL
+     * @param ring pointer to inited io_uring struct
+     * @return pointer to `io_uring_sqe` struct (not NULL)
+     */
+    [[nodiscard]]
+    io_uring_sqe* io_uring_get_sqe_safe() noexcept {
+        auto* sqe = io_uring_get_sqe(&ring);
+        if (__builtin_expect(!!sqe, true)) {
+            return sqe;
+        } else {
+#ifndef NDEBUG
+            printf(__FILE__ ": SQ is full, flushing %u cqe(s)\n", cqe_count);
+#endif
+            io_uring_cq_advance(&ring, cqe_count);
+            cqe_count = 0;
+            io_uring_submit(&ring);
+            sqe = io_uring_get_sqe(&ring);
+            assert(sqe && "sqe should not be NULL");
+            return sqe;
+        }
+    }
+
     /** Wait for an event forever, blocking
      * @see io_uring_wait_cqe
      * @see io_uring_enter(2)
@@ -509,20 +515,19 @@ public:
             io_uring_submit_and_wait(&ring, 1);
 
             io_uring_cqe *cqe;
-            unsigned head, cqe_count = 0;
+            unsigned head;
 
             io_uring_for_each_cqe(&ring, head, cqe) {
+                ++cqe_count;
                 auto coro = static_cast<promise<int, true> *>(io_uring_cqe_get_data(cqe));
                 if (coro) coro->resolve(cqe->res);
-                ++cqe_count;
-                if (__builtin_expect(cqe_count == 128, false)) {
-                    io_uring_cq_advance(&ring, cqe_count);
-                    cqe_count = 0;
-                    io_uring_submit(&ring);
-                }
             }
 
+#ifndef NDEBUG
+            printf(__FILE__ ": Found %u cqe(s), looping...\n", cqe_count);
+#endif
             io_uring_cq_advance(&ring, cqe_count);
+            cqe_count = 0;
         }
 
         return t.get_result();
@@ -583,4 +588,5 @@ public:
 
 private:
     io_uring ring;
+    unsigned cqe_count = 0;
 };

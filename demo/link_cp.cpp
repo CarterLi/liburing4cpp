@@ -6,7 +6,7 @@
 
 #include "io_service.hpp"
 
-#define BS (8*1024)
+#define BS (1024)
 
 static off_t get_file_size(int fd) {
     struct stat st;
@@ -33,13 +33,13 @@ task<> copy_file(io_service& service, off_t insize) {
 
     off_t offset = 0;
     for (; offset < insize - BS; offset += BS) {
-        service.read_fixed(0, buf.data(), buf.size(), offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK) | panic_on_err("read_fixed", false);
-        service.write_fixed(1, buf.data(), buf.size(), offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK) | panic_on_err("write_fixed", false);
+        service.read_fixed(0, buf.data(), buf.size(), offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK) | panic_on_err("read_fixed(1)", false);
+        service.write_fixed(1, buf.data(), buf.size(), offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK) | panic_on_err("write_fixed(1)", false);
     }
 
-    int left = insize - BS;
-    service.read_fixed(0, buf.data(), left, offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK) | panic_on_err("read_fixed", false);
-    co_await service.write_fixed(1, buf.data(), left, offset, 0, IOSQE_FIXED_FILE) | panic_on_err("write_fixed", false);
+    int left = insize - offset;
+    service.read_fixed(0, buf.data(), left, offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK) | panic_on_err("read_fixed(2)", false);
+    co_await service.write_fixed(1, buf.data(), left, offset, 0, IOSQE_FIXED_FILE) | panic_on_err("write_fixed(2)", false);
 }
 
 int main(int argc, char *argv[]) {
