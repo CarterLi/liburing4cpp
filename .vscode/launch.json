@@ -20,7 +20,8 @@
         }
       ],
       "externalConsole": false,
-      "MIMode": "lldb",
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
       "setupCommands": [
         {
           "description": "Enable pretty-printing for gdb",

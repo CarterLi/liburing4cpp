@@ -6,9 +6,11 @@ Originally named liburing-http-demo ( this project was originally started for de
 
 ## Requirements
 
-Requires the latest linux kernel ( currently 5.5 ). Since [io_uring](https://git.kernel.dk/cgit/liburing/) is in active development, we will drop old kernel support when every new linux kernel version is released ( before the next LTS version is released, maybe ).
+Requires the latest bleeding-edge kernel ( currently 5.6 ). Since [io_uring](https://git.kernel.dk/cgit/liburing/) is in active development, we will drop old kernel support when every new linux kernel version is released ( before the next LTS version is released, maybe ).
 
-Tested: `Linux carter-virtual-machine 5.5.0-999-generic #202002012101 SMP Sun Feb 2 02:07:23 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux` with `clang version 9.0.1-8build1`
+Linux 5.5 has limited support too. Please define `LINUX_KERNEL_VERSION` to `55` in `io_service.hpp`. Note you may get significant performance drop in 5.5 compat mode.
+
+Tested: `Linux carter-virtual-machine 5.6.0-999-generic #202002092108 SMP Mon Feb 10 02:13:59 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux` with `clang version 9.0.1-8build1`
 
 ## First glance
 
@@ -168,4 +170,4 @@ You must have `liburing` built and installed first, and run `make` in directory 
 
 ## License
 
-Public domain
+MIT
