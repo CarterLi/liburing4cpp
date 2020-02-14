@@ -13,7 +13,7 @@
 
 enum {
     BUF_SIZE = 512,
-    MAX_CONN_SIZE = 128,
+    MAX_CONN_SIZE = 512,
 };
 
 int runningCoroutines = 0;

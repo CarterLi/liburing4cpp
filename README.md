@@ -90,23 +90,24 @@ Until Linux 5.5 at least
 
 For operations that may block, kernel will punt them into a kernel worker called `io-wq`, which turns out to have high overhead cost. Always make sure that the fd to read is ready to read.
 
-
-### Carefully use `IOSQE_IO_LINK`
-
-`IOSQE_IO_LINK` isn't something that make the operation zero-copy, but a way to reduce the number of `io_uring_enter` syscalls. Less syscalls means less context switches, which is good, but operations marked `IOSQE_IO_LINK` will still awake `io_uring_enter` ( ie `io_uring_wait_cqe` ). Users usually have nothing to do but to wait the whole link chain being completed by issuing another `io_uring_enter` syscall. So if you can't control the number of cqe to wait ( ie use `io_uring_wait_cqes` ), don't use `IOSQE_IO_LINK`.
-
-For `READ-WRITE` chain, be sure to check `-ECANCELED` result of `WRITE` operation ( a short read is considered an error in a link chain which will cancel operations after the operation ). Never use `IOSQE_IO_LINK` for `RECV-SEND` chain because you can't control the number of bytes to send (a short read for `RECV` is NOT considered an error. I don't know why).
-
-### Don't use FIXED_FILE & FIXED_BUFFER
-They have little performace boost but increase much code complexity. Because the number of files and buffers can be registered has limitation, you almost always have to write fallbacks. In addition, you have to reuse the old file *slots* and buffers. See example: https://github.com/CarterLi/liburing4cpp/blob/daf6261419f39aae9a6624f0a271242b1e228744/demo/echo_server.cpp#L37
-
-Note `RECV`/`SEND` have no `_fixed` variant.
-
 ### Batch syscalls
 
 Use `io_uring_peek_batch_cqe` to peek multiple cqes once, handle them and enqueue multiple sqes. After all cqes are handled, submit all sqes.
 
 Handle multiple (cqes), submit (sqes) once
+
+### Carefully use `IOSQE_IO_LINK`
+
+As for Linux 5.5, `IOSQE_IO_LINK` has an issue that force operations after poll be executed async, that makes `POLL_ADD` mostly useless.
+
+See: https://lore.kernel.org/io-uring/5f09d89a-0c6d-47c2-465c-993af0c7ae71@kernel.dk/
+
+Note: For `READ-WRITE` chain, be sure to check `-ECANCELED` result of `WRITE` operation ( a short read is considered an error in a link chain which will cancel operations after the operation ). Never use `IOSQE_IO_LINK` for `RECV-SEND` chain because you can't control the number of bytes to send (a short read for `RECV` is NOT considered an error. I don't know why).
+
+### Don't use FIXED_FILE & FIXED_BUFFER
+They have little performace boost but increase much code complexity. Because the number of files and buffers can be registered has limitation, you almost always have to write fallbacks. In addition, you have to reuse the old file *slots* and buffers. See example: https://github.com/CarterLi/liburing4cpp/blob/daf6261419f39aae9a6624f0a271242b1e228744/demo/echo_server.cpp#L37
+
+Note `RECV`/`SEND` have no `_fixed` variant.
 
 ## Project Structure
 
