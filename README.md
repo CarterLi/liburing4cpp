@@ -8,7 +8,7 @@ Originally named liburing-http-demo ( this project was originally started for de
 
 Requires the latest bleeding-edge kernel ( currently 5.6 ). Since [io_uring](https://git.kernel.dk/cgit/liburing/) is in active development, we will drop old kernel support when every new linux kernel version is released ( before the next LTS version is released, maybe ).
 
-Linux 5.5 has limited support too. Please define `LINUX_KERNEL_VERSION` to `55` in `io_service.hpp`. Note you may get significant performance drop in 5.5 compat mode.
+We have limited Linux 5.5 support too. Please define `LINUX_KERNEL_VERSION` to `55` in `io_service.hpp`. Note you may get performance drop in 5.5 compat mode.
 
 Tested: `Linux carter-virtual-machine 5.6.0-999-generic #202002092108 SMP Mon Feb 10 02:13:59 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux` with `clang version 9.0.1-8build1`
 
@@ -84,25 +84,29 @@ C++  | 1        | 1         |  POLL-READ_F-WRITE_F |  -      |  -      |  -     
 
 ## Performance suggestions:
 
-Until Linux 5.5 at least
+Until Linux 5.6 at least
+
+### Batch syscalls
+
+Use `io_uring_for_each_cqe` to peek multiple cqes once, handle them and enqueue multiple sqes. After all cqes are handled, submit all sqes.
+
+Handle multiple (cqes), submit (sqes) once
 
 ### For non-disk I/O, always `POLL` before `READ`/`RECV`
 
 For operations that may block, kernel will punt them into a kernel worker called `io-wq`, which turns out to have high overhead cost. Always make sure that the fd to read is ready to read.
 
-### Batch syscalls
+This will change in Linux 5.7
 
-Use `io_uring_peek_batch_cqe` to peek multiple cqes once, handle them and enqueue multiple sqes. After all cqes are handled, submit all sqes.
+### Don't use `IOSQE_IO_LINK`
 
-Handle multiple (cqes), submit (sqes) once
-
-### Carefully use `IOSQE_IO_LINK`
-
-As for Linux 5.5, `IOSQE_IO_LINK` has an issue that force operations after poll be executed async, that makes `POLL_ADD` mostly useless.
+As for Linux 5.6, `IOSQE_IO_LINK` has an issue that force operations after poll be executed async, that makes `POLL_ADD` mostly useless.
 
 See: https://lore.kernel.org/io-uring/5f09d89a-0c6d-47c2-465c-993af0c7ae71@kernel.dk/
 
 Note: For `READ-WRITE` chain, be sure to check `-ECANCELED` result of `WRITE` operation ( a short read is considered an error in a link chain which will cancel operations after the operation ). Never use `IOSQE_IO_LINK` for `RECV-SEND` chain because you can't control the number of bytes to send (a short read for `RECV` is NOT considered an error. I don't know why).
+
+This will change in Linux 5.7
 
 ### Don't use FIXED_FILE & FIXED_BUFFER
 They have little performace boost but increase much code complexity. Because the number of files and buffers can be registered has limitation, you almost always have to write fallbacks. In addition, you have to reuse the old file *slots* and buffers. See example: https://github.com/CarterLi/liburing4cpp/blob/daf6261419f39aae9a6624f0a271242b1e228744/demo/echo_server.cpp#L37
