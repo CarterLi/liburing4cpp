@@ -1,16 +1,14 @@
 # liburing4cpp
 
-Modern C++ binding for [liburing](https://github.com/axboe/liburing) that uses C++2a Coroutines ( but still compiles for `clang` at C++17 mode with `-fcoroutines-ts` )
+Modern C++ binding for [liburing](https://github.com/axboe/liburing) that uses C++20 Coroutines ( but still compiles for `clang` at C++17 mode with `-fcoroutines-ts` )
 
 Originally named liburing-http-demo ( this project was originally started for demo )
 
 ## Requirements
 
-Requires the latest bleeding-edge kernel ( currently 5.6 ). Since [io_uring](https://git.kernel.dk/cgit/liburing/) is in active development, we will drop old kernel support when every new linux kernel version is released ( before the next LTS version is released, maybe ).
+Requires the latest kernel ( currently 5.6 ). Since [io_uring](https://git.kernel.dk/cgit/liburing/) is in active development, we will drop old kernel support when every new linux kernel version is released ( before the next LTS version is released, maybe ).
 
-We have limited Linux 5.5 support too. Please define `LINUX_KERNEL_VERSION` to `55` in `io_service.hpp`. Note you may get performance drop in 5.5 compat mode.
-
-Tested: `Linux carter-virtual-machine 5.6.0-999-generic #202002092108 SMP Mon Feb 10 02:13:59 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux` with `clang version 9.0.1-8build1`
+Tested: `Linux carter-virtual-machine 5.7.0-999-generic #202005082207 SMP Sat May 9 02:09:38 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux` with `clang version 10.0.0-4ubuntu1`
 
 ## First glance
 
@@ -57,7 +55,7 @@ pause:                  26562813
 * demo/echo_server 12345 ( C++, uses coroutines )
 * [./io_uring_echo_server 12345](https://github.com/CarterLi/io_uring-echo-server) ( C, raw )
 
-with `rust_echo_bench`: https://github.com/haraldh/rust_echo_bench  
+with `rust_echo_bench`: https://github.com/haraldh/rust_echo_bench
 unit: request/sec
 
 Also see [benchmarks for different opcodes](https://github.com/CarterLi/io_uring-echo-server#benchmarks)

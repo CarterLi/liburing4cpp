@@ -10,6 +10,7 @@
 
 #define USE_FIXED_FILES_AND_BUFFERS 0
 #define USE_LINK 0
+#define USE_POLL 0
 
 enum {
     BUF_SIZE = 512,
@@ -46,7 +47,9 @@ task<> accept_connection(io_service& service, int serverfd) {
 
                 while (true) {
 #   if USE_LINK
+#       if USE_POLL
                     service.poll(keyIdx, POLLIN, IOSQE_FIXED_FILE | IOSQE_IO_LINK);
+#       endif
                     auto tread = service.read_fixed(keyIdx, pbuf, BUF_SIZE, 0, keyIdx, IOSQE_IO_LINK | IOSQE_FIXED_FILE);
                     // If a short read is found, write_fixed will be canceled with -ECANCELED
                     int w = co_await service.write_fixed(keyIdx, pbuf, BUF_SIZE, 0, keyIdx, IOSQE_FIXED_FILE);
@@ -56,7 +59,9 @@ task<> accept_connection(io_service& service, int serverfd) {
                         co_await service.write_fixed(keyIdx, pbuf, r, 0, keyIdx, IOSQE_FIXED_FILE);
                     }
 #   else
+#       if USE_POLL
                     co_await service.poll(keyIdx, POLLIN, IOSQE_FIXED_FILE);
+#       endif
                     int r = co_await service.read_fixed(keyIdx, pbuf, BUF_SIZE, 0, keyIdx, IOSQE_FIXED_FILE);
                     if (r <= 0) break;
                     co_await service.write_fixed(keyIdx, pbuf, r, 0, keyIdx, IOSQE_FIXED_FILE);
@@ -70,11 +75,13 @@ task<> accept_connection(io_service& service, int serverfd) {
 
                 std::vector<char> buf(BUF_SIZE);
                 while (true) {
+#if USE_POLL
 #   if USE_LINK
                     service.poll(clientfd, POLLIN, IOSQE_IO_LINK);
 #   else
                     co_await service.poll(clientfd, POLLIN);
 #   endif
+#endif
                     int r = co_await service.recv(clientfd, buf.data(), BUF_SIZE, MSG_NOSIGNAL);
                     if (r <= 0) break;
                     co_await service.send(clientfd, buf.data(), r, MSG_NOSIGNAL);

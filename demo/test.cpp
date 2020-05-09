@@ -40,7 +40,7 @@ int main() {
         } catch (std::exception& ex) {
             fmt::print("exception cached: {}; it's expected\n", ex.what());
         }
-        fmt::print("cancel end, should not wait\n");
+        fmt::print("cancel end, should not wait\n\n");
         fmt::print("io link start\n");
         delayAndPrint(1, IOSQE_IO_HARDLINK);
         delayAndPrint(2, IOSQE_IO_HARDLINK);

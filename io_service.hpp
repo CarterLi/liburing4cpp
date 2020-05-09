@@ -148,40 +148,23 @@ public:
     DEFINE_AWAIT_OP(writev)
 #undef DEFINE_AWAIT_OP
 
-#if LINUX_KERNEL_VERSION >= 56
-#define DEFINE_AWAIT_OP(operation)                                                   \
-    task<int, true> operation(                                                       \
-        int fd,                                                                      \
-        const void* buf,                                                             \
-        unsigned nbytes,                                                             \
-        off_t offset,                                                                \
-        uint8_t iflags = 0                                                           \
-    ) {                                                                              \
-        auto* sqe = io_uring_get_sqe_safe();                                         \
-        io_uring_prep_##operation(sqe, fd, const_cast<void *>(buf), nbytes, offset); \
-        return await_work(sqe, iflags);                                              \
-    }
-#else
-#define DEFINE_AWAIT_OP(operation)                                                   \
-    task<int, true> operation(                                                       \
-        int fd,                                                                      \
-        const void* buf,                                                             \
-        unsigned nbytes,                                                             \
-        off_t offset,                                                                \
-        uint8_t iflags = 0                                                           \
-    ) noexcept {                                                                     \
-        iovec iov = { .iov_base = const_cast<void *>(buf), .iov_len = nbytes };      \
-        co_return co_await operation##v(fd, &iov, 1, offset, iflags);                \
-    }
-#endif
-
     /** Read from a file descriptor at a given offset asynchronously
      * @see pread(2)
      * @see io_uring_enter(2) IORING_OP_READ
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    DEFINE_AWAIT_OP(read)
+    task<int, true> read(
+        int fd,
+        void* buf,
+        unsigned nbytes,
+        off_t offset,
+        uint8_t iflags = 0
+    ) {
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_read(sqe, fd, buf, nbytes, offset);
+        return await_work(sqe, iflags);
+    }
 
     /** Write to a file descriptor at a given offset asynchronously
      * @see pwrite(2)
@@ -189,21 +172,16 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    DEFINE_AWAIT_OP(write)
-#undef DEFINE_AWAIT_OP
-
-#define DEFINE_AWAIT_OP(operation)                                                   \
-    task<int, true> operation(                                                       \
-        int fd,                                                                      \
-        void* buf,                                                                   \
-        unsigned nbytes,                                                             \
-        off_t offset,                                                                \
-        int buf_index,                                                               \
-        uint8_t iflags = 0                                                           \
-    ) noexcept {                                                                     \
-        auto* sqe = io_uring_get_sqe_safe();                                         \
-        io_uring_prep_##operation(sqe, fd, buf, nbytes, offset, buf_index);          \
-        return await_work(sqe, iflags);                                              \
+    task<int, true> write(
+        int fd,
+        const void* buf,
+        unsigned nbytes,
+        off_t offset,
+        uint8_t iflags = 0
+    ) {
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_write(sqe, fd, buf, nbytes, offset);
+        return await_work(sqe, iflags);
     }
 
     /** Read data into a fixed buffer asynchronously
@@ -213,7 +191,18 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    DEFINE_AWAIT_OP(read_fixed)
+    task<int, true> read_fixed(
+        int fd,
+        void* buf,
+        unsigned nbytes,
+        off_t offset,
+        int buf_index,
+        uint8_t iflags = 0
+    ) noexcept {
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_read_fixed(sqe, fd, buf, nbytes, offset, buf_index);
+        return await_work(sqe, iflags);
+    }
 
     /** Write data into a fixed buffer asynchronously
      * @see pwritev2(2)
@@ -222,8 +211,18 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    DEFINE_AWAIT_OP(write_fixed)
-#undef DEFINE_AWAIT_OP
+    task<int, true> write_fixed(
+        int fd,
+        const void* buf,
+        unsigned nbytes,
+        off_t offset,
+        int buf_index,
+        uint8_t iflags = 0
+    ) noexcept {
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_write_fixed(sqe, fd, buf, nbytes, offset, buf_index);
+        return await_work(sqe, iflags);
+    }
 
     /** Synchronize a file's in-core state with storage device asynchronously
      * @see fsync(2)
@@ -289,33 +288,7 @@ public:
     DEFINE_AWAIT_OP(sendmsg)
 #undef DEFINE_AWAIT_OP
 
-#if LINUX_KERNEL_VERSION >= 56
-#define DEFINE_AWAIT_OP(operation)                                                     \
-    task<int, true> operation(                                                         \
-        int sockfd,                                                                    \
-        const void* buf,                                                               \
-        unsigned nbytes,                                                               \
-        uint32_t flags,                                                                \
-        uint8_t iflags = 0                                                             \
-    ) noexcept {                                                                       \
-        auto* sqe = io_uring_get_sqe_safe();                                           \
-        io_uring_prep_##operation(sqe, sockfd, const_cast<void *>(buf), nbytes, flags);\
-        return await_work(sqe, iflags);                                                \
-    }
-#else
-#define DEFINE_AWAIT_OP(operation)                                                     \
-    task<int, true> operation(                                                         \
-        int sockfd,                                                                    \
-        const void* buf,                                                               \
-        unsigned nbytes,                                                               \
-        uint32_t flags,                                                                \
-        uint8_t iflags = 0                                                             \
-    ) noexcept {                                                                       \
-        iovec iov = { .iov_base = const_cast<void *>(buf), .iov_len = nbytes };        \
-        msghdr msg = { .msg_iov = &iov, .msg_iovlen = 1 };                             \
-        co_return co_await operation##msg (sockfd, &msg, flags, iflags);               \
-    }
-#endif
+#define DEFINE_AWAIT_OP(operation)
 
     /** Receive a message from a socket asynchronously
      * @see recv(2)
@@ -323,7 +296,17 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    DEFINE_AWAIT_OP(recv)
+    task<int, true> recv(
+        int sockfd,
+        void* buf,
+        unsigned nbytes,
+        uint32_t flags,
+        uint8_t iflags = 0
+    ) noexcept {
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_recv(sqe, sockfd, buf, nbytes, flags);
+        return await_work(sqe, iflags);
+    }
 
     /** Send a message on a socket asynchronously
      * @see send(2)
@@ -331,7 +314,17 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    DEFINE_AWAIT_OP(send)
+    task<int, true> send(
+        int sockfd,
+        const void* buf,
+        unsigned nbytes,
+        uint32_t flags,
+        uint8_t iflags = 0
+    ) noexcept {
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_send(sqe, sockfd, buf, nbytes, flags);
+        return await_work(sqe, iflags);
+    }
 #undef DEFINE_AWAIT_OP
 
     /** Wait for an event on a file descriptor asynchronously
@@ -426,6 +419,7 @@ public:
     }
 
     /** Open and possibly create a file asynchronously
+     * @see openat(2)
      * @see io_uring_enter(2) IORING_OP_OPENAT
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
@@ -437,17 +431,13 @@ public:
         mode_t mode,
         uint8_t iflags = 0
     ) noexcept {
-#if LINUX_KERNEL_VERSION >= 56
         auto* sqe = io_uring_get_sqe_safe();
         io_uring_prep_openat(sqe, dfd, path, flags, mode);
         return await_work(sqe, iflags);
-#else
-        co_await yield(iflags);
-        co_return ::openat(dfd, path, flags, mode);
-#endif
     }
 
     /** Close a file descriptor asynchronously
+     * @see close(2)
      * @see io_uring_enter(2) IORING_OP_CLOSE
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
@@ -456,13 +446,76 @@ public:
         int fd,
         uint8_t iflags = 0
     ) noexcept {
-#if LINUX_KERNEL_VERSION >= 56
         auto* sqe = io_uring_get_sqe_safe();
         io_uring_prep_close(sqe, fd);
         return await_work(sqe, iflags);
+    }
+
+    /** Get file status asynchronously
+     * @see statx(2)
+     * @see io_uring_enter(2) IORING_OP_STATX
+     * @param iflags IOSQE_* flags
+     * @return a task object for awaiting
+     */
+    task<int, true> statx(
+        int dfd,
+        const char *path,
+        int flags,
+        unsigned mask,
+        struct statx *statxbuf,
+        uint8_t iflags = 0
+    ) noexcept {
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_statx(sqe, dfd, path, flags, mask, statxbuf);
+        return await_work(sqe, iflags);
+    }
+
+
+    /** Splice data to/from a pipe asynchronously
+     * @see splice(2)
+     * @see io_uring_enter(2) IORING_OP_SPLICE
+     * @param iflags IOSQE_* flags
+     * @return a task object for awaiting
+     */
+    task<int, true> splice(
+        int fd_in,
+        loff_t off_in,
+        int fd_out,
+        loff_t off_out,
+        size_t nbytes,
+        unsigned flags,
+        uint8_t iflags = 0
+    ) {
+#if LINUX_KERNEL_VERSION >= 57
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_splice(sqe, fd_in, off_in, fd_out, off_out, nbytes, flags);
+        return await_work(sqe, iflags);
 #else
         co_await yield(iflags);
-        co_return ::close(fd);
+        co_return ::splice(fd_in, &off_in, fd_out, &off_out, nbytes, flags);
+#endif
+    }
+
+    /** Duplicate pipe content asynchronously
+     * @see tee(2)
+     * @see io_uring_enter(2) IORING_OP_TEE
+     * @param iflags IOSQE_* flags
+     * @return a task object for awaiting
+     */
+    task<int, true> tee(
+        int fd_in,
+        int fd_out,
+        size_t nbytes,
+        unsigned flags,
+        uint8_t iflags = 0
+    ) {
+#if LINUX_KERNEL_VERSION >= 58
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_tee(sqe, fd_in, fd_out, nbytes, flags);
+        return await_work(sqe, iflags);
+#else
+        co_await yield(iflags);
+        co_return ::tee(fd_in, fd_out, nbytes, flags);
 #endif
     }
 

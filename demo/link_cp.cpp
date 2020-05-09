@@ -39,7 +39,8 @@ task<> copy_file(io_service& service, off_t insize) {
 
     int left = insize - offset;
     service.read_fixed(0, buf.data(), left, offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK) | panic_on_err("read_fixed(2)", false);
-    co_await service.write_fixed(1, buf.data(), left, offset, 0, IOSQE_FIXED_FILE) | panic_on_err("write_fixed(2)", false);
+    service.write_fixed(1, buf.data(), left, offset, 0, IOSQE_FIXED_FILE) | panic_on_err("write_fixed(2)", false);
+    co_await service.fsync(1, 0, IOSQE_FIXED_FILE);
 }
 
 int main(int argc, char *argv[]) {
