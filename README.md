@@ -80,37 +80,6 @@ C++  | 0        | 1         |  POLL-READ_F-WRITE_F |  141509 |  146540 |  143541
 C++  | 1        | 0         |       POLL-RECV-SEND |  -      |  -      |  -      |  -      |
 C++  | 1        | 1         |  POLL-READ_F-WRITE_F |  -      |  -      |  -      |  -      |
 
-## Performance suggestions:
-
-Until Linux 5.6 at least
-
-### Batch syscalls
-
-Use `io_uring_for_each_cqe` to peek multiple cqes once, handle them and enqueue multiple sqes. After all cqes are handled, submit all sqes.
-
-Handle multiple (cqes), submit (sqes) once
-
-### For non-disk I/O, always `POLL` before `READ`/`RECV`
-
-For operations that may block, kernel will punt them into a kernel worker called `io-wq`, which turns out to have high overhead cost. Always make sure that the fd to read is ready to read.
-
-This will change in Linux 5.7
-
-### Don't use `IOSQE_IO_LINK`
-
-As for Linux 5.6, `IOSQE_IO_LINK` has an issue that force operations after poll be executed async, that makes `POLL_ADD` mostly useless.
-
-See: https://lore.kernel.org/io-uring/5f09d89a-0c6d-47c2-465c-993af0c7ae71@kernel.dk/
-
-Note: For `READ-WRITE` chain, be sure to check `-ECANCELED` result of `WRITE` operation ( a short read is considered an error in a link chain which will cancel operations after the operation ). Never use `IOSQE_IO_LINK` for `RECV-SEND` chain because you can't control the number of bytes to send (a short read for `RECV` is NOT considered an error. I don't know why).
-
-This will change in Linux 5.7
-
-### Don't use FIXED_FILE & FIXED_BUFFER
-They have little performace boost but increase much code complexity. Because the number of files and buffers can be registered has limitation, you almost always have to write fallbacks. In addition, you have to reuse the old file *slots* and buffers. See example: https://github.com/CarterLi/liburing4cpp/blob/daf6261419f39aae9a6624f0a271242b1e228744/demo/echo_server.cpp#L37
-
-Note `RECV`/`SEND` have no `_fixed` variant.
-
 ## Project Structure
 
 ### task.hpp
