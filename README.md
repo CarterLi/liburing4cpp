@@ -86,6 +86,17 @@ C++  | 1        | 1         |  POLL-READ_F-WRITE_F |  -      |  -      |  -     
 
 An awaitable class for C++2a coroutine functions. Originally modified from [gor_task.h](https://github.com/Quuxplusone/coro#taskh-gor_taskh)
 
+NOTE: `task` is not lazily executed, which is easy to use of course, but also can be easily misused. The simplest code to crash your memory is:
+
+```c++
+{
+    char c;
+    service.read(STDIN_FILENO, &c, sizeof (c), 0);
+}
+```
+
+The task instance returned by `service.read` is destructed, but the kernel task itself is **NOT** canceled. The memory of variable `c` will be written sometime. In this case, out-of-scope stack memory access will happen.
+
 ### promise.hpp
 
 An awaitable class. It's different from task that it can't used for return type, but can be created directly without calling an async function.
