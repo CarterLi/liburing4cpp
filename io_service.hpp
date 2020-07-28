@@ -104,7 +104,24 @@ public:
      * @param flags flags used to init io_uring
      */
     io_service(int entries = 64, unsigned flags = 0) {
-        io_uring_queue_init(entries, &ring, flags) | panic_on_err("queue_init", false);
+        io_uring_params p = {
+            .flags = flags,
+        };
+
+        io_uring_queue_init_params(entries, &ring, &p) | panic_on_err("queue_init", false);
+
+#ifndef NDEBUG
+#   define TEST_IORING_FEATURE(feature) if (p.features & feature) puts("\t" #feature)
+        puts("Supported io_uring features by current kernel:");
+        TEST_IORING_FEATURE(IORING_FEAT_SINGLE_MMAP);
+        TEST_IORING_FEATURE(IORING_FEAT_NODROP);
+        TEST_IORING_FEATURE(IORING_FEAT_SUBMIT_STABLE);
+        TEST_IORING_FEATURE(IORING_FEAT_RW_CUR_POS);
+        TEST_IORING_FEATURE(IORING_FEAT_CUR_PERSONALITY);
+        TEST_IORING_FEATURE(IORING_FEAT_FAST_POLL);
+        TEST_IORING_FEATURE(IORING_FEAT_POLL_32BITS);
+#   undef TEST_IORING_FEATURE
+#endif
     }
 
     /** Destroy io_service / io_uring object */
