@@ -102,13 +102,20 @@ public:
      * @see io_uring_setup(2)
      * @param entries Maximum sqe can be gotten without submitting
      * @param flags flags used to init io_uring
+     * @param wq_fd existing io_uring ring_fd used by IORING_SETUP_ATTACH_WQ
+     * @note io_service is NOT thread safe, nor is liburing. When used in a
+     *       multi-threaded program, it's highly recommended to create
+     *       io_service/io_uring instance per thread, and set IORING_SETUP_ATTACH_WQ
+     *       flag to make sure that kernel shares the only async worker thread pool.
+     *       See `IORING_SETUP_ATTACH_WQ` for detail.
      */
-    io_service(int entries = 64, unsigned flags = 0) {
+    io_service(int entries = 64, uint32_t flags = 0, uint32_t wq_fd = 0) {
         io_uring_params p = {
             .flags = flags,
+            .wq_fd = wq_fd,
         };
 
-        io_uring_queue_init_params(entries, &ring, &p) | panic_on_err("queue_init", false);
+        io_uring_queue_init_params(entries, &ring, &p) | panic_on_err("queue_init_params", false);
 
 #ifndef NDEBUG
 #   define TEST_IORING_FEATURE(feature) if (p.features & feature) puts("\t" #feature)
