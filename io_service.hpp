@@ -16,7 +16,7 @@
 #include "task.hpp"
 
 #ifndef LINUX_KERNEL_VERSION
-#   define LINUX_KERNEL_VERSION 56
+#   define LINUX_KERNEL_VERSION 58
 #endif
 
 /** Fill an iovec struct using buf & size */
@@ -540,6 +540,28 @@ public:
 #else
         co_await yield(iflags);
         co_return ::tee(fd_in, fd_out, nbytes, flags);
+#endif
+    }
+
+    /** Shut down part of a full-duplex connection asynchronously
+     * @see shutdown(2)
+     * @see io_uring_enter(2) IORING_OP_SHUTDOWN
+     * @param iflags IOSQE_* flags
+     * @return a task object for awaiting
+     */
+    task<int, true> shutdown(
+        int fd,
+        int how,
+        unsigned flags,
+        uint8_t iflags = 0
+    ) {
+#if LINUX_KERNEL_VERSION >= 59
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_shutdown(sqe, fd, how);
+        return await_work(sqe, iflags);
+#else
+        co_await yield(iflags);
+        co_return ::shutdown(fd, how);
 #endif
     }
 
