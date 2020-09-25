@@ -6,9 +6,9 @@ Originally named liburing-http-demo ( this project was originally started for de
 
 ## Requirements
 
-Requires the latest kernel ( currently 5.6 ). Since [io_uring](https://git.kernel.dk/cgit/liburing/) is in active development, we will drop old kernel support when every new linux kernel version is released ( before the next LTS version is released, maybe ).
+Requires the latest kernel ( currently 5.8 ). Since [io_uring](https://git.kernel.dk/cgit/liburing/) is in active development, we will drop old kernel support when every new linux kernel version is released ( before the next LTS version is released, maybe ).
 
-Tested: `Linux carter-virtual-machine 5.7.0-999-generic #202005082207 SMP Sat May 9 02:09:38 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux` with `clang version 10.0.0-4ubuntu1`
+Tested: `Ubuntu 5.9.0-050900rc6daily20200923-generic #202009222208 SMP Wed Sep 23 02:24:13 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux` with `clang version 10.0.0-4ubuntu1`
 
 ## First glance
 
@@ -35,19 +35,18 @@ int main() {
 
 ## Benchmarks
 
-* VMWare Ubuntu Focal Fossa 20.04 (development branch)
-* Linux carter-virtual-machine 5.5.0-999-generic #202002070204 SMP Fri Feb 7 02:09:27 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux
-* 4 virtual cores
-* Macbook pro i7 2.5GHz/16GB
-* Compiler: clang version 9.0.1-8build1
+* Ubuntu 20.04.1 LTS
+* Linux Ubuntu 5.9.0-050900rc6daily20200923-generic #202009222208 SMP Wed Sep 23 02:24:13 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux
+* Intel(R) Xeon(R) CPU E5-2620 v4 @ 2.10GHz
+* Compiler: clang version 10.0.0-4ubuntu1
 
 ### demo/bench
 
 ```
-service.yield:        5857666577
-plain IORING_OP_NOP:  5354647639
-this_thread::yield:   4709248308
-pause:                  26562813
+service.yield:        6527085832
+plain IORING_OP_NOP:  5884262348
+this_thread::yield:   4486533904
+pause:                  41502717
 ```
 
 ### demo/echo_server
@@ -60,25 +59,18 @@ unit: request/sec
 
 Also see [benchmarks for different opcodes](https://github.com/CarterLi/io_uring-echo-server#benchmarks)
 
-#### command: `cargo run --release -- -c 50`
+#### command: `cargo run --release`
 
-LANG | USE_LINK | USE_FIXED |           operations |     1st |     2nd |     3rd |     mid |    rate
-:-:  | :-:      | :-:       |                   -: |      -: |      -: |      -: |      -: |      -:
-C    | -        | -         |       POLL-RECV-SEND |  158517 |  163899 |  156310 |  158517 | 100.00%
-C++  | 0        | 0         |       POLL-RECV-SEND |  146928 |  140234 |  159169 |  146928 |  92.69%
-C++  | 0        | 1         |  POLL-READ_F-WRITE_F |  133356 |  124511 |  148615 |  133356 |  84.12%
-C++  | 1        | 0         |       POLL-RECV-SEND |  -      |  -      |  -      |  -      |
-C++  | 1        | 1         |  POLL-READ_F-WRITE_F |  -      |  -      |  -      |  -      |
-
-#### command: `cargo run --release -- -c 200`
-
-LANG | USE_LINK | USE_FIXED |           operations |     1st |     2nd |     3rd |     mid |    rate
-:-:  | :-:      | :-:       |                   -: |      -: |      -: |      -: |      -: |      -:
-C    | -        | -         |       POLL-RECV-SEND |  150691 |  151855 |  147474 |  150691 | 100.00%
-C++  | 0        | 0         |       POLL-RECV-SEND |  141288 |  138427 |  155898 |  141288 |  93.76%
-C++  | 0        | 1         |  POLL-READ_F-WRITE_F |  141509 |  146540 |  143541 |  143541 |  95.25%
-C++  | 1        | 0         |       POLL-RECV-SEND |  -      |  -      |  -      |  -      |
-C++  | 1        | 1         |  POLL-READ_F-WRITE_F |  -      |  -      |  -      |  -      |
+LANG | USE_LINK | USE_SPLICE | USE_POLL |         operations |     1st |     2nd |     3rd |     mid |    rate
+:-:  | :-:      | :-:        | :-:      |                 -: |      -: |      -: |      -: |      -: |      -:
+C    | -        | -          | 0        |          RECV-SEND |  114461 |  116797 |  112112 |  114461 | 100.00%
+C    | -        | -          | 1        |     POLL-RECV-SEND |  109037 |  114893 |  117629 |  114893 | 100.38%
+C++  | 0        | 0          | 0        |          RECV-SEND |  117519 |  121139 |  120239 |  120239 | 105.05%
+C++  | 0        | 1          | 0        |      SPLICE-SPLICE |   90577 |   91912 |   92301 |   91912 |  80.30%
+C++  | 1        | 1          | 0        |      SPLICE-SPLICE |   93440 |   92619 |   94201 |   93440 |  81.63%
+C++  | 0        | 0          | 1        |     POLL-RECV-SEND |  107454 |  111525 |  111210 |  111210 |  97.16%
+C++  | 0        | 1          | 1        | POLL-SPLICE-SPLICE |   89469 |   90663 |   89315 |   89469 |  78.17%
+C++  | 1        | 1          | 1        | POLL-SPLICE-SPLICE |   87628 |   89099 |   88708 |   89099 |  77.84%
 
 ## Project Structure
 
