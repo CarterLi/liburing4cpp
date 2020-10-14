@@ -141,7 +141,12 @@ See also https://github.com/frevib/io_uring-echo-server#benchmarks for benchmark
 
 This library is header only. It provides some demos for testing
 
-You must have `liburing` built and installed first, and run `make` in directory `demo`, requires `clang++-9`. When benchmarking, you may want to build it with optimization: `make MODE=RELEASE`. Note it seems that `-flto` generates wrong code, don't use it ( for now )
+1. Build [`liburing`](https://github.com/axboe/liburing) and install, the latest version required
+1. `sudo apt install clang libc++-dev libc++abi-dev`. Make sure clang version >= 9
+1. `git clone --recurse-submodules https://github.com/CarterLi/liburing4cpp.git`
+1. `cd liburing4cpp/demo && make`
+
+Note: When benchmarking, you may want to build it with optimization: `make MODE=RELEASE`.
 
 ## License
 
