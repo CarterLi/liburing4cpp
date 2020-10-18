@@ -9,7 +9,7 @@
 #include "io_service.hpp"
 
 #define USE_SPLICE 0
-#define USE_LINK 1
+#define USE_LINK 0
 #define USE_POLL 0
 
 enum {
