@@ -157,6 +157,9 @@ public:
         TEST_IORING_OP(IORING_OP_REMOVE_BUFFERS);
         TEST_IORING_OP(IORING_OP_TEE);
         TEST_IORING_OP(IORING_OP_SHUTDOWN);
+        TEST_IORING_OP(IORING_OP_RENAMEAT);
+        TEST_IORING_OP(IORING_OP_UNLINKAT);
+        TEST_IORING_OP(IORING_OP_MKDIRAT);
 #   undef TEST_IORING_OP
 
 #   define TEST_IORING_FEATURE(feature) if (p.features & feature) puts("\t" #feature)
@@ -169,6 +172,7 @@ public:
         TEST_IORING_FEATURE(IORING_FEAT_FAST_POLL);
         TEST_IORING_FEATURE(IORING_FEAT_POLL_32BITS);
         TEST_IORING_FEATURE(IORING_FEAT_SQPOLL_NONFIXED);
+        TEST_IORING_FEATURE(IORING_FEAT_EXT_ARG);
 #   undef TEST_IORING_FEATURE
 #endif
     }
@@ -603,6 +607,52 @@ public:
 #else
         co_await yield(iflags);
         co_return ::shutdown(fd, how);
+#endif
+    }
+
+    /** Change the name or location of a file asynchronously
+     * @see renameat2(2)
+     * @see io_uring_enter(2) IORING_OP_RENAMEAT
+     * @param iflags IOSQE_* flags
+     * @return a task object for awaiting
+     */
+    task<int, true> renameat(
+        int olddfd,
+        const char *oldpath,
+        int newdfd,
+        const char *newpath,
+        unsigned flags,
+        uint8_t iflags = 0
+    ) {
+#if LINUX_KERNEL_VERSION >= 59
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_renameat(sqe, olddfd, oldpath, newdfd, newpath, flags);
+        return await_work(sqe, iflags);
+#else
+        co_await yield(iflags);
+        co_return ::renameat2(olddfd, oldpath, newdfd, newpath, flags);
+#endif
+    }
+
+    /** Delete a name and possibly the file it refers to asynchronously
+     * @see unlinkat(2)
+     * @see io_uring_enter(2) IORING_OP_UNLINKAT
+     * @param iflags IOSQE_* flags
+     * @return a task object for awaiting
+     */
+    task<int, true> unlinkat(
+        int dfd,
+        const char *path,
+        unsigned flags,
+        uint8_t iflags = 0
+    ) {
+#if LINUX_KERNEL_VERSION >= 59
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_unlinkat(sqe, dfd, path, flags);
+        return await_work(sqe, iflags);
+#else
+        co_await yield(iflags);
+        co_return ::unlinkat(dfd, path, flags);
 #endif
     }
 
