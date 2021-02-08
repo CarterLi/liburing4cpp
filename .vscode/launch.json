@@ -8,7 +8,7 @@
       "name": "(lldb) Launch",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/demo/echo_server",
+      "program": "${workspaceFolder}/demo/test",
       "args": [
         "12345"
       ],
