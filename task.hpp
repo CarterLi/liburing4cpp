@@ -6,6 +6,7 @@ namespace std::experimental {
     using std::suspend_always;
     using std::suspend_never;
     using std::coroutine_handle;
+    using std::noop_coroutine;
 }
 #else
 #   include <experimental/coroutine>
@@ -27,15 +28,17 @@ struct task_promise_base: cancelable_promise_base {
             task_promise_base *me_;
 
             Awaiter(task_promise_base *me): me_(me) {};
-            void await_suspend(std::experimental::coroutine_handle<> caller) const noexcept {
+            std::experimental::coroutine_handle<> await_suspend(std::experimental::coroutine_handle<> caller) const noexcept {
                 if (__builtin_expect(me_->result_.index() == 3, false)) {
+                    // FIXME: destroy current coroutine; otherwise memory leaks.
                     if (me_->waiter_) {
                         me_->waiter_.destroy();
                     }
                     std::experimental::coroutine_handle<task_promise_base>::from_promise(*me_).destroy();
                 } else if (me_->waiter_) {
-                    me_->waiter_.resume();
+                    return me_->waiter_;
                 }
+                return std::experimental::noop_coroutine();
             }
         };
         return Awaiter(this);
@@ -140,8 +143,7 @@ struct task final: cancelable {
     task(): coro_(nullptr) {};
 
     task(task&& other) noexcept {
-        coro_ = other.coro_;
-        other.coro_ = nullptr;
+        coro_ = std::exchange(other.coro_, nullptr);
     }
 
     task& operator =(task&& other) noexcept {
