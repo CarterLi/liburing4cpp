@@ -118,9 +118,9 @@ public:
 #define TEST_IORING_OP(opcode) do {\
     for (int i = 0; i < probe->ops_len; ++i) {\
         if (probe->ops[i].op == opcode && probe->ops[i].flags & IO_URING_OP_SUPPORTED) {\
-            probe_ops[i] = true;\
-            puts("\t" #opcode);\
-            break;\
+                probe_ops[i] = true;\
+                puts("\t" #opcode);\
+                break;\
             }\
         }\
     } while (0)
@@ -194,26 +194,23 @@ public:
 
 public:
 
-#define DEFINE_AWAIT_OP(operation)                                                   \
-    task<int, true> operation(                                                       \
-        int fd,                                                                      \
-        iovec* iovecs,                                                               \
-        unsigned nr_vecs,                                                            \
-        off_t offset,                                                                \
-        uint8_t iflags = 0                                                           \
-    ) noexcept {                                                                     \
-        auto* sqe = io_uring_get_sqe_safe();                                         \
-        io_uring_prep_##operation(sqe, fd, iovecs, nr_vecs, offset);                 \
-        return await_work(sqe, iflags);                                              \
-    }                                                                                \
-
     /** Read data into multiple buffers asynchronously
      * @see preadv2(2)
      * @see io_uring_enter(2) IORING_OP_READV
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    DEFINE_AWAIT_OP(readv)
+    task<int, true> readv(
+        int fd,
+        const iovec* iovecs,
+        unsigned nr_vecs,
+        off_t offset,
+        uint8_t iflags = 0
+    ) noexcept {
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_readv(sqe, fd, iovecs, nr_vecs, offset);
+        return await_work(sqe, iflags);
+    }
 
     /** Write data into multiple buffers asynchronously
      * @see pwritev2(2)
@@ -221,8 +218,17 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    DEFINE_AWAIT_OP(writev)
-#undef DEFINE_AWAIT_OP
+    task<int, true> writev(
+        int fd,
+        const iovec* iovecs,
+        unsigned nr_vecs,
+        off_t offset,
+        uint8_t iflags = 0
+    ) noexcept {
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_writev(sqe, fd, iovecs, nr_vecs, offset);
+        return await_work(sqe, iflags);
+    }
 
     /** Read from a file descriptor at a given offset asynchronously
      * @see pread(2)
@@ -335,25 +341,23 @@ public:
         return await_work(sqe, iflags);
     }
 
-#define DEFINE_AWAIT_OP(operation)                                                   \
-    task<int, true> operation(                                                       \
-        int sockfd,                                                                  \
-        msghdr* msg,                                                                 \
-        uint32_t flags,                                                              \
-        uint8_t iflags = 0                                                           \
-    ) noexcept {                                                                     \
-        auto* sqe = io_uring_get_sqe_safe();                                         \
-        io_uring_prep_##operation(sqe, sockfd, msg, flags);                          \
-        return await_work(sqe, iflags);                                              \
-    }                                                                                \
-
     /** Receive a message from a socket asynchronously
      * @see recvmsg(2)
      * @see io_uring_enter(2) IORING_OP_RECVMSG
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    DEFINE_AWAIT_OP(recvmsg)
+
+    task<int, true> recvmsg(
+        int sockfd,
+        msghdr* msg,
+        uint32_t flags,
+        uint8_t iflags = 0
+    ) noexcept {
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_recvmsg(sqe, sockfd, msg, flags);
+        return await_work(sqe, iflags);
+    }
 
     /** Send a message on a socket asynchronously
      * @see sendmsg(2)
@@ -361,10 +365,16 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    DEFINE_AWAIT_OP(sendmsg)
-#undef DEFINE_AWAIT_OP
-
-#define DEFINE_AWAIT_OP(operation)
+    task<int, true> sendmsg(
+        int sockfd,
+        const msghdr* msg,
+        uint32_t flags,
+        uint8_t iflags = 0
+    ) noexcept {
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_sendmsg(sqe, sockfd, msg, flags);
+        return await_work(sqe, iflags);
+    }
 
     /** Receive a message from a socket asynchronously
      * @see recv(2)
@@ -401,7 +411,6 @@ public:
         io_uring_prep_send(sqe, sockfd, buf, nbytes, flags);
         return await_work(sqe, iflags);
     }
-#undef DEFINE_AWAIT_OP
 
     /** Wait for an event on a file descriptor asynchronously
      * @see poll(2)
@@ -632,6 +641,74 @@ public:
         } else {
             co_await yield(iflags);
             co_return ::renameat2(olddfd, oldpath, newdfd, newpath, flags);
+        }
+    }
+
+    /** Create a directory asynchronously
+     * @see mkdirat(2)
+     * @see io_uring_enter(2) IORING_OP_MKDIRAT
+     * @param iflags IOSQE_* flags
+     * @return a task object for awaiting
+     */
+    task<int, true> mkdirat(
+        int dirfd,
+        const char *pathname,
+        mode_t mode,
+        uint8_t iflags = 0
+    ) {
+        if (probe_ops[IORING_OP_MKDIRAT]) {
+            auto* sqe = io_uring_get_sqe_safe();
+            io_uring_prep_mkdirat(sqe, dirfd, pathname, mode);
+            co_return co_await await_work(sqe, iflags);
+        } else {
+            co_await yield(iflags);
+            co_return ::mkdirat(dirfd, pathname, mode);
+        }
+    }
+
+    /** Make a new name for a file asynchronously
+     * @see symlinkat(2)
+     * @see io_uring_enter(2) IORING_OP_SYMLINKAT
+     * @param iflags IOSQE_* flags
+     * @return a task object for awaiting
+     */
+    task<int, true> symlinkat(
+        const char *target,
+        int newdirfd,
+        const char *linkpath,
+        uint8_t iflags = 0
+    ) {
+        if (probe_ops[IORING_OP_SYMLINKAT]) {
+            auto* sqe = io_uring_get_sqe_safe();
+            io_uring_prep_symlinkat(sqe, target, newdirfd, linkpath);
+            co_return co_await await_work(sqe, iflags);
+        } else {
+            co_await yield(iflags);
+            co_return ::symlinkat(target, newdirfd, linkpath);
+        }
+    }
+
+    /** Make a new name for a file asynchronously
+     * @see symlinkat(2)
+     * @see io_uring_enter(2) IORING_OP_LINKAT
+     * @param iflags IOSQE_* flags
+     * @return a task object for awaiting
+     */
+    task<int, true> linkat(
+        int olddirfd,
+        const char *oldpath,
+        int newdirfd,
+        const char *newpath,
+        int flags,
+        uint8_t iflags = 0
+    ) {
+        if (probe_ops[IORING_OP_LINKAT]) {
+            auto* sqe = io_uring_get_sqe_safe();
+            io_uring_prep_linkat(sqe, olddirfd, oldpath, newdirfd, newpath, flags);
+            co_return co_await await_work(sqe, iflags);
+        } else {
+            co_await yield(iflags);
+            co_return ::linkat(olddirfd, oldpath, newdirfd, newpath, flags);
         }
     }
 

@@ -1,4 +1,4 @@
-CXX_COMPILER ?= clang++
+CXX_COMPILER ?= clang-10
 MODE ?= DEBUG
 
 ifeq ($(MODE),DEBUG)
@@ -7,7 +7,7 @@ else
 	CXXFLAGS ?= -O3 -DNDEBUG -march=native -mtune=intel
 endif
 
-ifeq ($(CXX_COMPILER),clang++)
+ifeq ($(CXX_COMPILER),clang-10)
 	override CXXFLAGS += -fcoroutines-ts -stdlib=libc++ -lc++ -lc++abi
 else
 	override CXXFLAGS += -fcoroutines
