@@ -689,7 +689,7 @@ public:
     }
 
     /** Make a new name for a file asynchronously
-     * @see symlinkat(2)
+     * @see linkat(2)
      * @see io_uring_enter(2) IORING_OP_LINKAT
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
