@@ -37,11 +37,6 @@
 #       endif
 #       include <signal.h>
 #       include <ucontext.h>
-#   elif USE_SJLJ || (!defined(USE_SJLJ) && __has_include(<unistd.h>))
-#       define USE_SJLJ 1
-#       include <setjmp.h>
-#       include <signal.h>
-#       include <unistd.h>
 #   endif
 #endif
 
@@ -55,6 +50,7 @@
 #include <type_traits>
 #include <optional>
 #include <any>
+#include <csignal>
 
 namespace FiberSpace {
     enum class FiberStatus {
@@ -103,7 +99,7 @@ namespace FiberSpace {
         /// \brief 真子纤程入口，第一个参数传入纤程对象的引用
         FuncType func;
 
-#if USE_UCONTEXT || USE_SJLJ
+#if USE_UCONTEXT
         struct alignas(16) StackBuf {
             uint8_t* get() { return this->buf; }
             size_t size() { return SIGSTKSZ; }
@@ -131,11 +127,6 @@ namespace FiberSpace {
 #elif USE_UCONTEXT
         ::ucontext_t ctx_main, ctx_fnew;
         const std::unique_ptr<StackBuf> fnew_stack = std::make_unique<StackBuf>();
-#elif USE_SJLJ
-        ::sigjmp_buf buf_main, buf_new;
-        const std::unique_ptr<StackBuf> fnew_stack = std::make_unique<StackBuf>();
-        struct sigaction old_sa;
-        thread_local void *that;
 #endif
 
         static_assert(std::is_object_v<ValueType>, "Non-object type won't work");
@@ -178,45 +169,6 @@ namespace FiberSpace {
             this->ctx_fnew.uc_stack.ss_size = this->fnew_stack->size();
             this->ctx_fnew.uc_link = &this->ctx_main;
             ::makecontext(&this->ctx_fnew, (void(*)())&fEntry, 1, this);
-#elif USE_SJLJ
-            ::stack_t sigstk, oldstk;
-            sigstk.ss_sp = this->fnew_stack.get();
-            sigstk.ss_size = this->fnew_stack->size();
-            sigstk.ss_flags = 0;
-            if (::sigaltstack(&sigstk, &oldstk)) {
-                 std::perror("Error while set sigstk");
-                 std::abort();
-            }
-
-            struct sigaction sa;
-            sa.sa_flags = SA_ONSTACK;
-            sa.sa_handler = fEntry;
-            sigemptyset(&sa.sa_mask);
-            if (::sigaction(SIGUSR2, &sa, &this->old_sa)) {
-                std::perror("Error while installing a signal handler");
-                std::abort();
-            }
-
-            if (!sigsetjmp(this->buf_main, 0)) {
-                Fiber::that = this; // Android doesn't support sigqueue,
-                if (::raise(SIGUSR2)) {
-                    std::perror("Failed to queue the signal");
-                    std::abort();
-                }
-            }
-
-            if (::sigaltstack(&oldstk, nullptr)) {
-                std::perror("Error while reset sigstk");
-                std::abort();
-            }
-
-            ::sigset_t sa_mask;
-            sigemptyset(&sa_mask);
-            sigaddset(&sa_mask, SIGUSR2);
-            if (::sigprocmask(SIG_UNBLOCK, &sa_mask, nullptr)) {
-                std::perror("Error while reset sigprocmask");
-                std::abort();
-            }
 #endif
         }
 
@@ -364,10 +316,6 @@ namespace FiberSpace {
             ::SwitchToFiber(this->pMainFiber);
 #elif USE_UCONTEXT
             ::swapcontext(&this->ctx_fnew, &this->ctx_main);
-#elif USE_SJLJ
-            if (!::sigsetjmp(this->buf_new, 0)) {
-                ::siglongjmp(this->buf_main, 1);
-            }
 #endif
             // We are back to new coroutine now
             this->status = FiberStatus::running;
@@ -389,10 +337,6 @@ namespace FiberSpace {
             ::SwitchToFiber(this->pNewFiber);
 #elif USE_UCONTEXT
             ::swapcontext(&this->ctx_main, &this->ctx_fnew);
-#elif USE_SJLJ
-            if (!::sigsetjmp(this->buf_main, 0)) {
-                ::siglongjmp(this->buf_new, 1);
-            }
 #endif
             // We are back to main coroutine now
 
@@ -413,16 +357,6 @@ namespace FiberSpace {
         static void WINAPI fEntry(Fiber *fiber) {
 #elif USE_UCONTEXT
         static void fEntry(Fiber *fiber) {
-#elif USE_SJLJ
-        static void fEntry(int signo) {
-            auto *fiber = static_cast<Fiber *>(std::exchange(Fiber::that, nullptr));
-            if (::sigaction(signo, &fiber->old_sa, nullptr)) {
-                std::perror("Failed to reset signal handler");
-                std::abort();
-            }
-            if (!::sigsetjmp(fiber->buf_new, 0)) {
-                ::siglongjmp(fiber->buf_main, 1);
-            }
 #endif
 
             if (!fiber->eptr) {
@@ -444,20 +378,18 @@ namespace FiberSpace {
             aco_exit();
 #elif USE_WINFIB
             ::SwitchToFiber(fiber->pMainFiber);
-#elif USE_SJLJ
-            ::siglongjmp(fiber->buf_main, 1);
 #endif
         }
 
     public:
         /// \brief 纤程本地存储
         FiberStorageType localData;
-    };
 
-#if USE_SJLJ
-    template <typename ValueType, typename FiberStorageType>
-    void *Fiber<ValueType, FiberStorageType>::that;
+#ifndef NDEBUG
+        /// \brief 纤程名称
+        std::string fiberName;
 #endif
+    };
 
     /** \brief 纤程迭代器类
      *
