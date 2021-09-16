@@ -4,3 +4,4 @@
 *.a
 *.o
 /file-server
+/echo-server

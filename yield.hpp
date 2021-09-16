@@ -86,7 +86,7 @@ namespace FiberSpace {
     template <typename ValueType = std::any, typename FiberStorageType = std::any>
     class Fiber {
     public:
-        using FuncType = std::function<void (Fiber& fiber)>;
+        using FuncType = std::function<void ()>;
 
     private:
         Fiber(const Fiber &) = delete;
@@ -362,7 +362,7 @@ namespace FiberSpace {
             if (!fiber->eptr) {
                 fiber->status = FiberStatus::running;
                 try {
-                    fiber->func(*fiber);
+                    fiber->func();
                 }
                 catch (FiberReturn &) {
                     // 主 Fiber 对象正在析构
@@ -384,11 +384,6 @@ namespace FiberSpace {
     public:
         /// \brief 纤程本地存储
         FiberStorageType localData;
-
-#ifndef NDEBUG
-        /// \brief 纤程名称
-        std::string fiberName;
-#endif
     };
 
     /** \brief 纤程迭代器类
