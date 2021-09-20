@@ -9,11 +9,6 @@
 // It will be deleted automatically when coroutine exits. See `coro_holder::next()`
 class io_coroutine {
 public:
-#ifndef NDEBUG
-    std::string fiberName;
-#endif
-
-public:
     template <typename TEntry>
     explicit io_coroutine(io_host& host, TEntry entry, std::function<void ()> cleanup = std::function<void ()>())
         : host(host)
