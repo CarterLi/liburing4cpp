@@ -5,3 +5,5 @@
 *.o
 /file-server
 /echo-server
+/ping-pong-io_uring
+/ping-pong-epoll

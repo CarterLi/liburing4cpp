@@ -7,36 +7,8 @@
 #include <cerrno>
 #include <cassert>
 #include <liburing.h>
-#ifndef NDEBUG
-#   include <execinfo.h>
-#endif
 
 #include "utils.hpp"
-
-[[noreturn]]
-void panic(std::string_view sv, int err = 0) {
-#ifndef NDEBUG
-    // https://stackoverflow.com/questions/77005/how-to-automatically-generate-a-stacktrace-when-my-program-crashes
-    void *array[32];
-    size_t size;
-
-    // get void*'s for all entries on the stack
-    size = backtrace(array, 32);
-
-    // print out all the frames to stderr
-    fprintf(stderr, "Error: errno %d:\n", err);
-    backtrace_symbols_fd(array, size, STDERR_FILENO);
-
-    // __asm__("int $3");
-#endif
-
-    if (err == 0) err = errno;
-    std::fprintf(stderr, "errno: %d\n", err);
-    if (err == EPIPE) {
-        throw std::runtime_error("Broken pipe: client socket is closed");
-    }
-    throw std::system_error(err, std::generic_category(), sv.data());
-}
 
 struct nextable {
     virtual void next(int ret) = 0;
@@ -49,7 +21,9 @@ public:
 
         auto* probe = io_uring_get_probe_ring(&ring);
         on_scope_exit free_probe([=]() { io_uring_free_probe(probe); });
-#define TEST_IORING_OP(opcode) do {\
+
+#ifndef NDEBUG
+#   define TEST_IORING_OP(opcode) do {\
         for (int i = 0; i < probe->ops_len; ++i) {\
             if (probe->ops[i].op == opcode && probe->ops[i].flags & IO_URING_OP_SUPPORTED) {\
                     probe_ops[i] = true;\
@@ -99,9 +73,9 @@ public:
         TEST_IORING_OP(IORING_OP_MKDIRAT);
         TEST_IORING_OP(IORING_OP_SYMLINKAT);
         TEST_IORING_OP(IORING_OP_LINKAT);
-#undef TEST_IORING_OP
+#   undef TEST_IORING_OP
 
-#define TEST_IORING_FEATURE(feature) if (ring.features & feature) puts("\t" #feature)
+#   define TEST_IORING_FEATURE(feature) if (ring.features & feature) puts("\t" #feature)
         puts("Supported io_uring features by current kernel:");
         TEST_IORING_FEATURE(IORING_FEAT_SINGLE_MMAP);
         TEST_IORING_FEATURE(IORING_FEAT_NODROP);
@@ -114,7 +88,8 @@ public:
         TEST_IORING_FEATURE(IORING_FEAT_EXT_ARG);
         TEST_IORING_FEATURE(IORING_FEAT_NATIVE_WORKERS);
         TEST_IORING_FEATURE(IORING_FEAT_RSRC_TAGS);
-#undef TEST_IORING_FEATURE
+#   undef TEST_IORING_FEATURE
+#endif
     }
 
     ~io_host() {
@@ -140,7 +115,7 @@ public:
     }
 
     void run() {
-        while (true) {
+        while (running_coroutines > 0) {
             io_uring_submit_and_wait(&ring, 1);
 
             io_uring_cqe *cqe;
@@ -163,4 +138,5 @@ public:
     io_uring ring;
     int cqe_count = 0;
     bool probe_ops[IORING_OP_LAST] = {};
+    int running_coroutines = 0;
 };

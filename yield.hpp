@@ -65,7 +65,7 @@ namespace FiberSpace {
      * \warning 用户代码吃掉此异常可导致未定义行为。如果捕获到此异常，请转抛出去。
      */
     struct FiberReturn {
-        template <typename, typename>
+        template <typename, bool>
         friend class Fiber;
 
     private:
@@ -83,17 +83,17 @@ namespace FiberSpace {
      * \tparam ValueType 子纤程返回类型
      * \tparam ValueType 纤程本地存储变量类型
      */
-    template <typename ValueType = std::any, typename FiberStorageType = std::any>
+    template <typename ValueType = std::any, bool nothrow = false>
     class Fiber {
     public:
-        using FuncType = std::function<void ()>;
+        using FuncType = std::function<void (Fiber&)>; // std::function<void () noexcept(nothrow)>
 
     private:
         Fiber(const Fiber &) = delete;
         Fiber& operator =(const Fiber &) = delete;
 
         /// \brief 存储子纤程抛出的异常
-        std::exception_ptr eptr = nullptr;
+        std::conditional_t<nothrow, void*, std::exception_ptr> eptr = nullptr;
         /// \brief 子纤程是否结束
         FiberStatus status = FiberStatus::unstarted;
         /// \brief 真子纤程入口，第一个参数传入纤程对象的引用
@@ -180,7 +180,7 @@ namespace FiberSpace {
             >
         explicit Fiber(Fp&& f, Args&&... args)
                 : Fiber(std::bind(std::forward<Fp>(f), std::placeholders::_1, std::forward<Args>(args)...)) {
-            static_assert (std::is_invocable_v<Fp, Fiber<ValueType, FiberStorageType>&, Args...>,
+            static_assert (std::is_invocable_v<Fp, Fiber<ValueType, nothrow>&, Args...>,
                 "Wrong callback argument type list or incompatible fiber type found");
         }
 
@@ -213,10 +213,14 @@ namespace FiberSpace {
          * \warning 子纤程必须尚未结束
          * \return 返回子纤程是否尚未结束
          */
-        bool throw_(std::exception_ptr&& eptr) {
-            assert(!isFinished());
-            this->eptr = std::move(eptr);
-            return next();
+        bool throw_(std::exception_ptr&& eptr) noexcept(nothrow) {
+            if constexpr (nothrow) {
+                __builtin_unreachable();
+            } else {
+                assert(!isFinished());
+                this->eptr = std::move(eptr);
+                return next();
+            }
         }
 
         /** \brief 强制退出子纤程
@@ -225,10 +229,14 @@ namespace FiberSpace {
          *
          * \warning 如果子纤程尚未开始或已经结束，本函数不做任何事情
          */
-        void return_() {
-            if (this->status == FiberStatus::unstarted || isFinished()) return;
-            throw_(std::make_exception_ptr(FiberReturn()));
-            assert(isFinished() && "请勿吃掉 FiberReturn 异常！！！");
+        void return_() noexcept(nothrow) {
+            if constexpr (nothrow) {
+                __builtin_unreachable();
+            } else {
+                if (this->status == FiberStatus::unstarted || isFinished()) return;
+                throw_(std::make_exception_ptr(FiberReturn()));
+                assert(isFinished() && "Do NOT swallow FiberReturn exception!!!");
+            }
         }
 
         /** \brief 判断子纤程是否结束
@@ -242,7 +250,7 @@ namespace FiberSpace {
          *
          * 也可以用来作为纤程返回值
          */
-        void resetValue(std::optional<ValueType> value = std::nullopt) {
+        void resetValue(std::optional<ValueType> value = std::nullopt) noexcept {
             this->currentValue = std::move(value);
         }
 
@@ -254,7 +262,7 @@ namespace FiberSpace {
          * \warning 子纤程必须尚未结束
          * \return 返回子纤程是否尚未结束
          */
-        bool next(std::optional<ValueType> value = std::nullopt) {
+        bool next(std::optional<ValueType> value = std::nullopt) noexcept(nothrow) {
             this->currentValue = std::move(value);
             this->jumpNew();
             return !isFinished();
@@ -282,7 +290,7 @@ namespace FiberSpace {
          *          参数类型必须与子纤程返回值相同，无类型安全
          * \param value 输出到主纤程的值
          */
-        void yield(std::optional<ValueType> value = std::nullopt) {
+        void yield(std::optional<ValueType> value = std::nullopt) noexcept(nothrow) {
             this->currentValue = std::move(value);
             this->jumpMain();
         }
@@ -290,20 +298,20 @@ namespace FiberSpace {
         /** \brief 输出子纤程的所有值
          * \param fiber 另一子纤程
          */
-        void yieldAll(Fiber& fiber) {
+        void yieldAll(Fiber& fiber) noexcept(nothrow) {
             assert(&fiber != this);
             while (fiber.next()) {
                 this->yield(*fiber.current());
             }
         }
 
-        void yieldAll(Fiber&& fiber) {
+        void yieldAll(Fiber&& fiber) noexcept(nothrow) {
             this->yieldAll(fiber);
         }
 
     protected:
         /// \brief 控制流跳转主纤程
-        void jumpMain() {
+        void jumpMain() noexcept(nothrow) {
             assert(!isFinished());
             this->status = FiberStatus::suspended;
 
@@ -320,13 +328,15 @@ namespace FiberSpace {
             // We are back to new coroutine now
             this->status = FiberStatus::running;
 
-            if (this->eptr) {
-                std::rethrow_exception(std::exchange(this->eptr, nullptr));
+            if constexpr (!nothrow) {
+                if (this->eptr) {
+                    std::rethrow_exception(std::exchange(this->eptr, nullptr));
+                }
             }
         }
 
         /// \brief 控制流跳转子纤程
-        void jumpNew() {
+        void jumpNew() noexcept(nothrow) {
             assert(!isFinished());
 #if USE_FCONTEXT
             this->ctx_fnew = fctx::detail::jump_fcontext(this->ctx_fnew, this).fctx;
@@ -340,35 +350,41 @@ namespace FiberSpace {
 #endif
             // We are back to main coroutine now
 
-            if (this->eptr) {
-                std::rethrow_exception(std::exchange(this->eptr, nullptr));
+            if constexpr (!nothrow) {
+                if (this->eptr) {
+                    std::rethrow_exception(std::exchange(this->eptr, nullptr));
+                }
             }
         }
 
         /// \brief 子纤程入口的warpper
 #if USE_FCONTEXT
-        static void fEntry(fctx::detail::transfer_t transfer) {
+        static void fEntry(fctx::detail::transfer_t transfer) noexcept(nothrow) {
             auto *fiber = static_cast<Fiber *>(transfer.data);
             fiber->ctx_main = transfer.fctx;
 #elif USE_LIBACO
-        static void fEntry() {
+        static void fEntry() noexcept(nothrow) {
             auto *fiber = static_cast<Fiber *>(aco_get_arg());
 #elif USE_WINFIB
-        static void WINAPI fEntry(Fiber *fiber) {
+        static void WINAPI fEntry(Fiber *fiber) noexcept(nothrow) {
 #elif USE_UCONTEXT
-        static void fEntry(Fiber *fiber) {
+        static void fEntry(Fiber *fiber) noexcept(nothrow) {
 #endif
 
             if (!fiber->eptr) {
                 fiber->status = FiberStatus::running;
-                try {
-                    fiber->func();
-                }
-                catch (FiberReturn &) {
-                    // 主 Fiber 对象正在析构
-                }
-                catch (...) {
-                    fiber->eptr = std::current_exception();
+                if constexpr (nothrow) {
+                    fiber->func(*fiber);
+                } else {
+                    try {
+                        fiber->func(*fiber);
+                    }
+                    catch (FiberReturn &) {
+                        // 主 Fiber 对象正在析构
+                    }
+                    catch (...) {
+                        fiber->eptr = std::current_exception();
+                    }
                 }
             }
             fiber->status = FiberStatus::closed;
@@ -380,10 +396,6 @@ namespace FiberSpace {
             ::SwitchToFiber(fiber->pMainFiber);
 #endif
         }
-
-    public:
-        /// \brief 纤程本地存储
-        FiberStorageType localData;
     };
 
     /** \brief 纤程迭代器类
@@ -391,14 +403,14 @@ namespace FiberSpace {
      * 它通过使用 yield 函数对数组或集合类执行自定义迭代。
      * 用于 C++11 for (... : ...)
      */
-    template <typename ValueType, typename FiberStorageType>
+    template <typename ValueType, bool nothrow>
     struct FiberIterator : std::iterator<std::output_iterator_tag, ValueType> {
         /// \brief 迭代器尾
         FiberIterator() noexcept : fiber(nullptr) {}
         /** \brief 迭代器首
          * \param _f 主线程类的引用
          */
-        FiberIterator(Fiber<ValueType, FiberStorageType>& _f) : fiber(&_f) {
+        FiberIterator(Fiber<ValueType, nothrow>& _f) : fiber(&_f) {
             next();
         }
 
@@ -436,14 +448,14 @@ namespace FiberSpace {
     };
 
     /// \brief 返回迭代器首
-    template <typename ValueType, typename FiberStorageType>
-    auto begin(Fiber<ValueType, FiberStorageType>& fiber) {
-        return FiberIterator<ValueType, FiberStorageType>(fiber);
+    template <typename ValueType, bool nothrow>
+    auto begin(Fiber<ValueType, nothrow>& fiber) {
+        return FiberIterator<ValueType, nothrow>(fiber);
     }
 
     /// \brief 返回迭代器尾
-    template <typename ValueType, typename FiberStorageType>
-    auto end(Fiber<ValueType, FiberStorageType>&) noexcept {
-        return FiberIterator<ValueType, FiberStorageType>();
+    template <typename ValueType, bool nothrow>
+    auto end(Fiber<ValueType, nothrow>&) noexcept {
+        return FiberIterator<ValueType, nothrow>();
     }
 }

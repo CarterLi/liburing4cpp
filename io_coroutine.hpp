@@ -9,9 +9,6 @@
 // It will be deleted automatically when coroutine exits. See `coro_holder::next()`
 class io_coroutine {
 public:
-    using CoroType = FiberSpace::Fiber<int, std::function<void ()>>;
-    using FuncType = CoroType::FuncType;
-
 #ifndef NDEBUG
     std::string fiberName;
 #endif
@@ -20,14 +17,16 @@ public:
     template <typename TEntry>
     explicit io_coroutine(io_host& host, TEntry entry, std::function<void ()> cleanup = std::function<void ()>())
         : host(host)
-        , coro([this, entry] { entry(*this); })
+        , cleanup(std::move(cleanup))
+        , coro([this, entry] (auto&) { entry(*this); })
     {
-        coro.localData = std::move(cleanup);
+        ++host.running_coroutines;
         coro.next(); // We have to make sure that this->yield() is executed at least once.
     }
 
     ~io_coroutine() {
-        if (coro.localData) coro.localData();
+        if (cleanup) cleanup();
+        --host.running_coroutines;
     }
 
 private:
@@ -161,6 +160,13 @@ public:
     }
 
     [[nodiscard]]
+    prepared_operation connect(int fd, sockaddr *addr, socklen_t addrlen, int flags, uint8_t iflags = 0) noexcept {
+        auto* sqe = host.io_uring_get_sqe_safe();
+        io_uring_prep_connect(sqe, fd, addr, addrlen);
+        return prepared_operation(sqe, this, iflags);
+    }
+
+    [[nodiscard]]
     prepared_operation nop(uint8_t iflags = 0) noexcept {
         auto* sqe = host.io_uring_get_sqe_safe();
         io_uring_prep_nop(sqe);
@@ -205,5 +211,6 @@ public:
     io_host& host;
 
 private:
-    FiberSpace::Fiber<int, std::function<void ()>> coro;
+    FiberSpace::Fiber<int, true> coro;
+    std::function<void ()> cleanup;
 };
