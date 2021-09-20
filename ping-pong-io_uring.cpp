@@ -12,8 +12,8 @@
 #include "io_coroutine.hpp"
 #include "utils.hpp"
 
-#define USE_SPLICE 1
-#define USE_LINK 1
+#define USE_SPLICE 0
+#define USE_LINK 0
 
 enum {
     BUF_SIZE = 512,
@@ -44,7 +44,7 @@ void serve(io_coroutine& coro, int clientfd) noexcept {
 #   else
         int r = coro.splice(clientfd, -1, pipefds[1], -1, -1, SPLICE_F_MOVE).await();
         if (r <= 0) break;
-        coro.splice(pipefds[0], -1, clientfd, -1, -1, SPLICE_F_MOVE).await();
+        coro.splice(pipefds[0], -1, clientfd, -1, r, SPLICE_F_MOVE).await();
 #   endif
 #else
         // RECV-SEND will not work with IOSQE_IO_LINK because short read of IORING_OP_RECV is not considered an error
@@ -78,15 +78,6 @@ void accept_connection(io_coroutine& coro, uint16_t server_port, int client_num)
         new io_coroutine(
             coro.host,
             std::bind(serve, std::placeholders::_1, clientfd)
-#ifndef NDEBUG
-            ,
-            [&coro, clientfd, start = std::chrono::high_resolution_clock::now()] () {
-                fmt::print("sockfd {} is closed, time used {}, running coroutines {}\n",
-                    clientfd,
-                    (std::chrono::high_resolution_clock::now() - start).count(),
-                    --coro.host.running_coroutines);
-            }
-#endif
         );
     }
 }
@@ -138,6 +129,7 @@ int main(int argc, char *argv[]) noexcept {
     }
 
     fmt::print("io_uring with {} and {}\n", USE_SPLICE ? "splice" : "recv/send", USE_LINK ? "link" : "no_link");
+    auto start = std::chrono::high_resolution_clock::now();
 
     io_host host(client_num * 4);
 
@@ -155,5 +147,6 @@ int main(int argc, char *argv[]) noexcept {
 
     host.run();
 
-    printf("SUM = %lu\n", sum);
+    fmt::print("Finished in {}\n", (std::chrono::high_resolution_clock::now() - start).count());
+    fmt::print("SUM: (1 + {}) * {} / 2 * {} = {}\n", msg_count, msg_count, client_num, sum);
 }

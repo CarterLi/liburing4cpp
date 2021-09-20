@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <set>
+#include <chrono>
 
 #include <sys/socket.h>
 #include <sys/epoll.h>
@@ -39,14 +40,14 @@ void serve(FiberSpace::Fiber<uint32_t, true>& coro, int epfd, int clientfd) noex
     ++running_coroutines;
     on_scope_exit minusCount([] { --running_coroutines; });
 
-#ifndef NDEBUG
-    fmt::print("sockfd {} is accepted; number of running coroutines: {}\n", clientfd, running_coroutines);
-#endif
-
     on_scope_exit closesock([=] {
         shutdown(clientfd, SHUT_RDWR);
         close(clientfd);
     });
+
+#ifndef NDEBUG
+    fmt::print("sockfd {} is accepted; number of running coroutines: {}\n", clientfd, running_coroutines);
+#endif
 
 #if USE_SPLICE
     int pipefds[2];
@@ -149,6 +150,7 @@ int main(int argc, char *argv[]) {
     }
 
     fmt::print("epoll with {}\n", USE_SPLICE ? "splice" : "recv/send");
+    auto start = std::chrono::high_resolution_clock::now();
 
     int epfd = epoll_create(client_num * 4);
     if (epfd < 0) panic("epoll_create");
@@ -171,5 +173,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    printf("SUM = %lu\n", sum);
+    fmt::print("Finished in {}\n", (std::chrono::high_resolution_clock::now() - start).count());
+    fmt::print("SUM: (1 + {}) * {} / 2 * {} = {}\n", msg_count, msg_count, client_num, sum);
 }
