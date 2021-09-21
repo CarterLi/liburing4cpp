@@ -54,7 +54,7 @@ task<> accept_connection(io_service& service, int serverfd) {
 #   endif
 #else
 #   if USE_LINK
-#       error This won't work because short read of IORING_OP_RECV is not considered an error
+#       error "This won't work because short read of IORING_OP_RECV is not considered an error"
                 auto tresult = service.recv(clientfd, buf.data(), BUF_SIZE, MSG_NOSIGNAL, IOSQE_IO_LINK);
                 int r = co_await service.send(clientfd, buf.data(), BUF_SIZE, MSG_NOSIGNAL);
                 if (r <= 0) {
