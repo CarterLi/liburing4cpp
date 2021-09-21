@@ -3,15 +3,13 @@ cmake_minimum_required(VERSION 3.14)  # CMake version check
 project("liburing4cpp")
 set(libname "liburing4cpp")
 set(CMAKE_CXX_STANDARD 20)
-
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-# Use pthreads, if availible
-set(THREADS_PREFER_PTHREAD_FLAG ON)
-
 add_library("${libname}" INTERFACE)
 
-target_include_directories(${libname} INTERFACE include/)
+#######################
+## Find dependencies ##
+#######################
+# Find a threads library
+find_package(Threads REQUIRED)
 
 # Defines helper functions, like find_or_fetch
 include(FetchContent)
@@ -26,9 +24,55 @@ find_or_fetch(
 note("Remote dependencies: ${remote_dependencies}")
 FetchContent_MakeAvailable(${remote_dependencies})
 
-find_package(Threads)
-# Target all the source files in demo
-add_source_dir("demo" ${libname} fmt uring Threads::Threads)
+###################
+## Configuration ##
+###################
 
-target_sources(file_server PRIVATE "demo/demo-sources/mime_dicts.cpp")
-target_include_directories(file_server PRIVATE "demo/demo-includes")
+if(NOT DEFINED ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+    note("Setting the output directory to 'bin' in the project root")
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin")
+endif()
+
+# This creates a file compile_commands.json in the build directory
+# That contains the compile commands used to actually compile the project
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Use pthreads as the Threads library, if availible
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+
+########################
+## Define the library ##
+########################
+
+target_include_directories(
+    ${libname}
+    INTERFACE
+    include/)
+
+# The library has fmt, uring, and Threads::Threads as dependencies
+target_link_libraries(
+    ${libname}
+    INTERFACE
+    fmt uring Threads::Threads)
+
+##############################################
+## Build demo when the project is top level ##
+##############################################
+
+# NB: If this project is included as a dependency as another project,
+# Then demo won't get built
+
+if (PROJECT_IS_TOP_LEVEL)
+    # Target all the source files in demo
+    add_source_dir("demo" ${libname})
+
+    target_sources(
+        file_server
+        PRIVATE
+        "demo/demo-sources/mime_dicts.cpp")
+
+    target_include_directories(
+        file_server
+        PRIVATE
+        "demo/demo-includes")
+endif()
