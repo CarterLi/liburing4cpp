@@ -13,16 +13,6 @@ if(NOT DEFINED PROJECT_IS_TOP_LEVEL)
     endif()
 endif()
 
-set(dependencies "")
-
-# If ALWAYS_FETCH is ON, then find_or_fetch will always fetch dependencies
-# Rather than using the ones provided by the system. This is useful for
-# Creating a static executable.
-option(
-    ALWAYS_FETCH
-    "Tells find_or_fetch to always fetch packages"
-    OFF)
-
 # Defines some useful constants representing terminal codes to print things
 # in color.
 if(NOT WIN32)
@@ -50,6 +40,22 @@ function(note msg)
     message("🐈 ${BoldCyan}says: ${msg}${ColorReset}")
 endfunction()
 
+####################################################
+## Sec. 2: Dependency Management via FetchContent ##
+####################################################
+
+set(remote_dependencies "")
+
+# If ALWAYS_FETCH is ON, then find_or_fetch will always fetch any remote
+# dependencies rather than using the ones provided by the system. This is
+# useful for creating a static executable.
+option(
+    ALWAYS_FETCH
+    "Tells find_or_fetch to always fetch packages"
+    OFF)
+
+
+include(FetchContent)
 # find_or_fetch will search for a system installation of ${package} via
 # find_package. If it fails to find one, it'll use FetchContent to download and
 # build it locally.
@@ -66,11 +72,17 @@ function(find_or_fetch package repo tag)
             GIT_REPOSITORY "${repo}"
             GIT_TAG "${tag}"
         )
-        list(APPEND dependencies "${package}")
+        list(APPEND remote_dependencies "${package}")
+        set (remote_dependencies  ${remote_dependencies} PARENT_SCOPE)
     else()
         note("Using system cmake package for dependency '${package}'")
     endif()
 endfunction()
+
+#####################################################################
+## Sec. 3: Convinience Functions to add targets more automatically ##
+#####################################################################
+
 
 # Adds every top-level .cpp file in the given directory as an executable. Arguments
 # provided after the directory name are interpreted as libraries, and it'll link
