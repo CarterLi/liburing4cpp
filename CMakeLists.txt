@@ -18,4 +18,7 @@ include(functions.cmake)
 
 find_package(Threads)
 # Target all the source files in demo
-add_source_dir("demo/" ${libname} fmt uring Threads::Threads)
+add_source_dir("demo" ${libname} fmt uring Threads::Threads)
+
+target_sources(file_server PRIVATE "demo/demo-sources/mime_dicts.cpp")
+target_include_directories(file_server PRIVATE "demo/demo-includes")
