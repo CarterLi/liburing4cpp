@@ -6,5 +6,5 @@ cd "$(dirname "$0")"
 
 # Build things in a build directory named 'build' in the project root
 # Output executables in a directory named 'bin' in the project root
-cmake . -B build
+cmake . -B build "${@}"
 cmake --build build
