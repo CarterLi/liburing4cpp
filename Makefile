@@ -9,12 +9,14 @@ endif
 all: io_uring.o epoll.o aio.o
 
 libaco.a:
-	$(CC) -g -O3 -Wall -Werror ./libaco/acosw.S ./libaco/aco.c -c -fPIE
-	ar rcs libaco.a acosw.o aco.o
+	$(CC) -g -O3 -Wall -Werror -flto ./cxx-yield/libaco/acosw.S ./cxx-yield/libaco/aco.c -c -fPIE
+	ar rcs -flto libaco.a acosw.o aco.o
+	rm acosw.o aco.o
 
 libfmt.a:
-	$(CXX) -g -O3 -Wall -Werror ./fmt/src/format.cc -I./fmt/include -c -fPIE
-	ar rcs libfmt.a format.o
+	$(CXX) -g -O3 -Wall -Werror -flto ./fmt/src/format.cc ./fmt/src/os.cc -I./fmt/include -c -fPIE
+	ar rcs -flto libfmt.a format.o os.o
+	rm format.o os.o
 
 io_uring.o: libaco.a libfmt.a io_uring/ping-pong.cpp yield.hpp utils.hpp io_uring/io_coroutine.hpp io_uring/io_host.hpp
 	$(CXX) $(CXXFLAGS) io_uring/ping-pong.cpp libfmt.a -I./fmt/include -I. -D_GNU_SOURCE=1 -std=c++17 -flto -march=native -g -o io_uring.o -DUSE_FCONTEXT=1 -luring $(LDFLAGS)

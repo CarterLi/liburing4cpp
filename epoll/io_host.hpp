@@ -50,11 +50,17 @@ public:
             auto* coro = (nextable*)event.data;
             coro->next(event.res);
         }
+#   ifndef NDEBUG
+        syscall_count += 2;
+#   endif
     }
 #else
     std::vector<epoll_event> events(entries);
     while (running_coroutines > 0) {
         int size = epoll_wait(epfd, events.data(), events.size(), -1);
+#       ifndef NDEBUG
+        ++syscall_count;
+#       endif
         if (size < 0) panic("epoll_wait");
         for (int i = 0; i < size; ++i) {
             auto& event = events[i];
@@ -78,6 +84,9 @@ public:
         };
 
         if (epoll_ctl(epfd, polling_fds.emplace(fd).second ? EPOLL_CTL_ADD : EPOLL_CTL_MOD, fd, &ev) < 0) panic("epoll_ctl");
+#   ifndef NDEBUG
+        ++syscall_count;
+#   endif
 #endif
     }
 
@@ -85,6 +94,9 @@ public:
 #if !USE_LIBAIO
         polling_fds.erase(fd);
         if (epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr) < 0) panic("epoll_ctl");
+#   ifndef NDEBUG
+        ++syscall_count;
+#   endif
 #endif
     }
 
@@ -97,4 +109,8 @@ public:
 #endif
     int running_coroutines = 0;
     int entries;
+
+#ifndef NDEBUG
+    unsigned syscall_count = 0;
+#endif
 };

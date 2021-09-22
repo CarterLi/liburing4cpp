@@ -61,7 +61,7 @@ void serve(io_coroutine& coro, int clientfd) noexcept {
 void accept_connection(io_coroutine& coro, uint16_t server_port, int client_num) noexcept {
     int serverfd = socket(AF_INET, SOCK_STREAM, 0);
     if (serverfd < 0) panic("socket creation (serverfd)");
-    on_scope_exit closesock([=]() {
+    on_scope_exit closesock([=] {
         shutdown(serverfd, SHUT_RDWR);
         close(serverfd);
     });
@@ -87,7 +87,7 @@ int64_t sum = 0;
 void connect_server(io_coroutine& coro, uint16_t server_port, int msg_count) noexcept {
     int clientfd = socket(AF_INET, SOCK_STREAM, 0);
     if (clientfd < 0) panic("socket creation (clientfd)");
-    on_scope_exit closesock([&]() {
+    on_scope_exit closesock([=] {
         shutdown(clientfd, SHUT_RDWR);
         close(clientfd);
     });
@@ -99,8 +99,7 @@ void connect_server(io_coroutine& coro, uint16_t server_port, int msg_count) noe
         .sin_zero = {},
     }; coro.connect(clientfd, reinterpret_cast<sockaddr *>(&addr), sizeof (sockaddr_in), 0).await() < 0) panic("connect");
 
-    int num = 1;
-    while (num <= msg_count) {
+    for (int num = 0; num < msg_count; ++num) {
         int res = -1;
 #if USE_LINK
         coro.send(clientfd, &num, sizeof num, MSG_NOSIGNAL, IOSQE_IO_LINK).detach();
@@ -111,7 +110,6 @@ void connect_server(io_coroutine& coro, uint16_t server_port, int msg_count) noe
         assert(ret == sizeof res);
         assert(res == num);
         sum += res;
-        ++num;
     }
 }
 
@@ -142,5 +140,8 @@ int main(int argc, char *argv[]) noexcept {
     host.run();
 
     fmt::print("Finished in {}\n", (std::chrono::high_resolution_clock::now() - start).count());
-    fmt::print("SUM: (1 + {}) * {} / 2 * {} = {}\n", msg_count, msg_count, client_num, sum);
+#ifndef NDEBUG
+    fmt::print("Syscall used: {}\n", host.syscall_count);
+#endif
+    fmt::print("Verify: (1 + {}) * {} / 2 * {} = {}, \n", msg_count, msg_count, client_num, sum, (1 + msg_count) * msg_count / 2 * client_num == sum ? "OK" : "ERROR");
 }

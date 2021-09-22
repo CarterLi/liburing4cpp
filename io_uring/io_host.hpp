@@ -19,14 +19,13 @@ public:
     io_host(int entries, int flags = 0) {
         if (io_uring_queue_init(entries, &ring, flags) < 0) panic("queue_init");
 
+#ifndef NDEBUG
         auto* probe = io_uring_get_probe_ring(&ring);
         on_scope_exit free_probe([=]() { io_uring_free_probe(probe); });
 
-#ifndef NDEBUG
 #   define TEST_IORING_OP(opcode) do {\
         for (int i = 0; i < probe->ops_len; ++i) {\
             if (probe->ops[i].op == opcode && probe->ops[i].flags & IO_URING_OP_SUPPORTED) {\
-                    probe_ops[i] = true;\
                     puts("\t" #opcode);\
                     break;\
                 }\
@@ -104,6 +103,7 @@ public:
         } else {
 #ifndef NDEBUG
             printf(__FILE__ ": SQ is full, flushing %u cqe(s)\n", cqe_count);
+            ++syscall_count;
 #endif
             io_uring_cq_advance(&ring, cqe_count);
             cqe_count = 0;
@@ -120,7 +120,6 @@ public:
 
             io_uring_cqe *cqe;
             unsigned head;
-
             io_uring_for_each_cqe(&ring, head, cqe) {
                 ++cqe_count;
                 auto p = static_cast<nextable *>(io_uring_cqe_get_data(cqe));
@@ -129,6 +128,7 @@ public:
 
 #ifndef NDEBUG
             printf(__FILE__ ": Found %u cqe(s), looping...\n", cqe_count);
+            ++syscall_count;
 #endif
             io_uring_cq_advance(&ring, cqe_count);
             cqe_count = 0;
@@ -137,6 +137,9 @@ public:
 
     io_uring ring;
     int cqe_count = 0;
-    bool probe_ops[IORING_OP_LAST] = {};
     int running_coroutines = 0;
+
+#ifndef NDEBUG
+    unsigned syscall_count = 0;
+#endif
 };

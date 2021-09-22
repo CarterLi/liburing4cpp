@@ -1,6 +1,6 @@
 [submodule "fmt"]
 	path = fmt
 	url = https://github.com/fmtlib/fmt.git
-[submodule "libaco"]
-	path = libaco
-	url = git@github.com:hnes/libaco.git
+[submodule "cxx-yield"]
+	path = cxx-yield
+	url = https://github.com/CarterLi/Cxx-yield.git
