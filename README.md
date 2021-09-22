@@ -18,11 +18,11 @@ Tested on `Linux Ubuntu 5.14.6-051406-generic #202109181232 SMP Sat Sep 18 12:35
 * https://segmentfault.com/a/1190000019300089
 * https://segmentfault.com/a/1190000019361819
 
-## Benchmark
+## Benchmark ( smaller is better )
 
 ### 1 Conn, 100000 msgs
 
-#### POLL
+#### [POLL with plain ordinary linux syscalls](https://github.com/CarterLi/liburing4cpp/blob/master/poll/ping-pong.cpp)
 
 TYPE       | METHOD        |        1st |        2nd |        3rd |        mid | syscalls
 :-:        | :-:           |         -: |         -: |         -: |         -: |       -:
@@ -33,7 +33,7 @@ AIO        | SPLICE-SPLICE | 1304920320 | 1323454602 | 1344003697 | 1323454602 |
 IO_URING   | RECV-SEND     | 1097310812 | 1076904395 | 1052063003 | 1076904395 |   200003
 IO_URING   | SPLICE-SPLICE | 1062135048 | 1134858429 | 1080572551 | 1080572551 |   200003
 
-#### IO_URING without POLL
+#### [IO_URING (IORING_IO_CMD) without POLL](https://github.com/CarterLi/liburing4cpp/blob/master/io_uring/ping-pong.cpp)
 
 METHOD        | USE_LINK |        1st |        2nd |        3rd |        mid | syscalls
 :-:           | :-:      |         -: |         -: |         -: |         -: |       -:
@@ -43,7 +43,7 @@ SPLICE-SPLICE | 1        | 2711935931 | 2696392063 | 2722265501 | 2722265501 |  
 
 ### 500 Conns, 500 msgs
 
-#### POLL
+#### [POLL with plain ordinary linux syscalls](https://github.com/CarterLi/liburing4cpp/blob/master/poll/ping-pong.cpp)
 
 TYPE       | METHOD        |        1st |        2nd |        3rd |        mid | syscalls
 :-:        | :-:           |         -: |         -: |         -: |         -: |      -:
@@ -54,7 +54,7 @@ AIO        | SPLICE-SPLICE | 2772713512 | 2824479822 | 2776287044 | 2772713512 |
 IO_URING   | RECV-SEND     | 2944616957 | 2934462576 | 2915093399 | 2934462576 |     1502
 IO_URING   | SPLICE-SPLICE | 3002170858 | 3023692843 | 2942249975 | 3023692843 |     1502
 
-#### IO_URING without POLL
+#### [IO_URING (IORING_IO_CMD) without POLL](https://github.com/CarterLi/liburing4cpp/blob/master/io_uring/ping-pong.cpp)
 
 METHOD        | USE_LINK |        1st |        2nd |        3rd |        mid | syscalls
 :-:           | :-:      |         -: |         -: |         -: |         -: |       -:
