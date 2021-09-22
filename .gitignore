@@ -1,3 +1,3 @@
 /CMakeLists.txt.user
-/build/*.a
-/build/*.o
+/build/*
+!/build/Makefile

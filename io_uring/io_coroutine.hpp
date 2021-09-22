@@ -134,9 +134,9 @@ public:
     }
 
     [[nodiscard]]
-    prepared_operation poll(int fd, uint32_t pull_flags, uint8_t iflags = 0) noexcept {
+    prepared_operation poll(int fd, uint32_t pull_masks, uint8_t iflags = 0) noexcept {
         auto* sqe = host.io_uring_get_sqe_safe();
-        io_uring_prep_poll_add(sqe, fd, pull_flags);
+        io_uring_prep_poll_add(sqe, fd, pull_masks);
         return prepared_operation(sqe, this, iflags);
     }
 

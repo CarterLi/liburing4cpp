@@ -18,6 +18,9 @@ class io_host {
 public:
     io_host(int entries, int flags = 0) {
         if (io_uring_queue_init(entries, &ring, flags) < 0) panic("queue_init");
+#ifdef SYSCALL_COUNT
+        ++syscall_count;
+#endif
 
 #ifndef NDEBUG
         auto* probe = io_uring_get_probe_ring(&ring);
@@ -93,6 +96,9 @@ public:
 
     ~io_host() {
         io_uring_queue_exit(&ring);
+#ifdef SYSCALL_COUNT
+        ++syscall_count;
+#endif
     }
 
     [[nodiscard]]
@@ -103,6 +109,8 @@ public:
         } else {
 #ifndef NDEBUG
             printf(__FILE__ ": SQ is full, flushing %u cqe(s)\n", cqe_count);
+#endif
+#ifdef SYSCALL_COUNT
             ++syscall_count;
 #endif
             io_uring_cq_advance(&ring, cqe_count);
@@ -116,7 +124,10 @@ public:
 
     void run() {
         while (running_coroutines > 0) {
-            io_uring_submit_and_wait(&ring, 1);
+            if (io_uring_submit_and_wait(&ring, 1) < 0) panic("io_uring_submit_and_wait");
+#ifdef SYSCALL_COUNT
+            ++syscall_count;
+#endif
 
             io_uring_cqe *cqe;
             unsigned head;
@@ -128,7 +139,6 @@ public:
 
 #ifndef NDEBUG
             printf(__FILE__ ": Found %u cqe(s), looping...\n", cqe_count);
-            ++syscall_count;
 #endif
             io_uring_cq_advance(&ring, cqe_count);
             cqe_count = 0;
@@ -138,8 +148,7 @@ public:
     io_uring ring;
     int cqe_count = 0;
     int running_coroutines = 0;
-
-#ifndef NDEBUG
+#ifdef SYSCALL_COUNT
     unsigned syscall_count = 0;
 #endif
 };

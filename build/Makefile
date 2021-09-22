@@ -6,7 +6,7 @@ else
 	CXXFLAGS ?= -O3 -DNDEBUG -march=native -mtune=intel
 endif
 
-all: io_uring.o epoll.o aio.o
+all: io_uring poll-epoll poll-io_uring poll-aio
 
 libaco.a:
 	$(CC) -g -O3 -Wall -Werror -flto ../cxx-yield/libaco/acosw.S ../cxx-yield/libaco/aco.c -c -fPIE
@@ -18,14 +18,17 @@ libfmt.a:
 	ar rcs -flto libfmt.a format.o os.o
 	rm format.o os.o
 
-io_uring.o: libaco.a libfmt.a ../io_uring/ping-pong.cpp ../yield.hpp ../utils.hpp ../io_uring/io_coroutine.hpp ../io_uring/io_host.hpp
-	$(CXX) $(CXXFLAGS) ../io_uring/ping-pong.cpp libfmt.a -I../fmt/include -I.. -D_GNU_SOURCE=1 -std=c++17 -flto -march=native -g -o io_uring.o -DUSE_FCONTEXT=1 -luring $(LDFLAGS)
+io_uring: libfmt.a ../io_uring/ping-pong.cpp ../yield.hpp ../utils.hpp ../io_uring/io_coroutine.hpp ../io_uring/io_host.hpp
+	$(CXX) $(CXXFLAGS) ../io_uring/ping-pong.cpp libfmt.a -I../fmt/include -I.. -D_GNU_SOURCE=1 -std=c++17 -flto -march=native -g -luring -o io_uring -DUSE_FCONTEXT=1 -DSYSCALL_COUNT=1 $(LDFLAGS)
 
-epoll.o: libaco.a libfmt.a ../epoll/ping-pong.cpp ../yield.hpp ../utils.hpp ../epoll/io_coroutine.hpp ../epoll/io_host.hpp
-	$(CXX) $(CXXFLAGS) ../epoll/ping-pong.cpp libfmt.a -I../fmt/include -I.. -D_GNU_SOURCE=1 -std=c++17 -flto -march=native -g -o epoll.o -DUSE_FCONTEXT=1 $(LDFLAGS)
+poll-epoll: libfmt.a ../poll/ping-pong.cpp ../yield.hpp ../utils.hpp ../poll/io_coroutine.hpp ../poll/io_host.hpp
+	$(CXX) $(CXXFLAGS) ../poll/ping-pong.cpp libfmt.a -I../fmt/include -I.. -D_GNU_SOURCE=1 -std=c++17 -flto -march=native -g -o poll-epoll -DUSE_FCONTEXT=1 -DSYSCALL_COUNT=1 $(LDFLAGS)
 
-aio.o: libaco.a libfmt.a ../epoll/ping-pong.cpp ../yield.hpp ../utils.hpp ../epoll/io_coroutine.hpp ../epoll/io_host.hpp
-	$(CXX) $(CXXFLAGS) ../epoll/ping-pong.cpp libfmt.a -I../fmt/include -I.. -D_GNU_SOURCE=1 -std=c++17 -flto -DUSE_LIBAIO=1 -laio -march=native -g -o aio.o -DUSE_FCONTEXT=1 $(LDFLAGS)
+poll-io_uring: libfmt.a ../poll/ping-pong.cpp ../yield.hpp ../utils.hpp ../poll/io_coroutine.hpp ../poll/io_host.hpp
+	$(CXX) $(CXXFLAGS) ../poll/ping-pong.cpp libfmt.a -I../fmt/include -I.. -D_GNU_SOURCE=1 -std=c++17 -flto -march=native -g -DUSE_LIBURING=1 -luring -o poll-io_uring -DUSE_FCONTEXT=1 -DSYSCALL_COUNT=1 $(LDFLAGS)
+
+poll-aio: libfmt.a ../poll/ping-pong.cpp ../yield.hpp ../utils.hpp ../poll/io_coroutine.hpp ../poll/io_host.hpp
+	$(CXX) $(CXXFLAGS) ../poll/ping-pong.cpp libfmt.a -I../fmt/include -I.. -D_GNU_SOURCE=1 -std=c++17 -flto -march=native -g -DUSE_LIBAIO=1 -laio -o poll-aio -DUSE_FCONTEXT=1 -DSYSCALL_COUNT=1 $(LDFLAGS)
 
 clean:
-	rm -f io_uring.o epoll.o aio.o
+	rm -f io_uring poll-epoll poll-io_uring poll-aio

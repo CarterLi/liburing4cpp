@@ -101,11 +101,7 @@ void connect_server(io_coroutine& coro, uint16_t server_port, int msg_count) noe
 
     for (int num = 1; num <= msg_count; ++num) {
         int res = -1;
-#if USE_LINK
-        coro.send(clientfd, &num, sizeof num, MSG_NOSIGNAL, IOSQE_IO_LINK).detach();
-#else
-        coro.send(clientfd, &num, sizeof num, MSG_NOSIGNAL).await();
-#endif
+        coro.send(clientfd, &num, sizeof num, MSG_NOSIGNAL).detach();
         [[maybe_unused]] int ret = coro.recv(clientfd, &res, sizeof res, MSG_NOSIGNAL).await();
         assert(ret == sizeof res);
         assert(res == num);
@@ -140,8 +136,8 @@ int main(int argc, char *argv[]) noexcept {
     host.run();
 
     fmt::print("Finished in {}\n", (std::chrono::high_resolution_clock::now() - start).count());
-#ifndef NDEBUG
+#ifdef SYSCALL_COUNT
     fmt::print("Syscall used: {}\n", host.syscall_count);
 #endif
-    fmt::print("Verify: (1 + {}) * {} / 2 * {} = {}, {}\n", msg_count, msg_count, client_num, sum, (1 + msg_count) * msg_count / 2 * client_num == sum ? "OK" : "ERROR");
+    fmt::print("Verify: (1 + {}) * {} / 2 * {} = {}, {}\n", msg_count, msg_count, client_num, sum, (1L + msg_count) * msg_count / 2L * client_num == sum ? "OK" : "ERROR");
 }

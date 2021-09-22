@@ -17,6 +17,9 @@
 #ifndef USE_LIBAIO
 #   define USE_LIBAIO 0
 #endif
+#ifndef USE_LIBURING
+#   define USE_LIBURING 0
+#endif
 
 enum {
     BUF_SIZE = 512,
@@ -75,7 +78,7 @@ void accept_connection(io_coroutine& coro, uint16_t server_port, int client_num)
 
     if (listen(serverfd, client_num)) panic("listen", errno);
 
-    for (int i = 1; i <= client_num; ++i) {
+    for (int i = 0; i < client_num; ++i) {
         coro.await_poll(serverfd, POLLIN);
         int clientfd = accept(serverfd, nullptr, nullptr);
         if (clientfd < 0) panic("accept");
@@ -102,7 +105,7 @@ void connect_server(io_coroutine& coro, uint16_t server_port, int msg_count) noe
         .sin_zero = {},
     }; connect(clientfd, reinterpret_cast<sockaddr *>(&addr), sizeof (sockaddr_in)) < 0) panic("connect");
 
-    for (int num = 0; num < msg_count; ++num) {
+    for (int num = 1; num <= msg_count; ++num) {
         coro.await_poll(clientfd, POLLOUT);
         send(clientfd, &num, sizeof num, MSG_NOSIGNAL);
 
@@ -130,7 +133,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    fmt::print("{} with {}\n", USE_LIBAIO ? "libaio" : "epoll", USE_SPLICE ? "splice" : "recv/send");
+    fmt::print("poll-{} with {}\n", USE_LIBAIO ? "libaio" : USE_LIBURING ? "liburing" : "epoll", USE_SPLICE ? "splice" : "recv/send");
     auto start = std::chrono::high_resolution_clock::now();
 
     io_host host(client_num * 4);
@@ -144,8 +147,8 @@ int main(int argc, char *argv[]) {
     host.run();
 
     fmt::print("Finished in {}\n", (std::chrono::high_resolution_clock::now() - start).count());
-#ifndef NDEBUG
+#ifdef SYSCALL_COUNT
     fmt::print("Syscall used: {}\n", host.syscall_count);
 #endif
-    fmt::print("Verify: (1 + {}) * {} / 2 * {} = {}, {}\n", msg_count, msg_count, client_num, sum, (1 + msg_count) * msg_count / 2 * client_num == sum ? "OK" : "ERROR");
+    fmt::print("Verify: (1 + {}) * {} / 2 * {} = {}, {}\n", msg_count, msg_count, client_num, sum, (1L + msg_count) * msg_count / 2L * client_num == sum ? "OK" : "ERROR");
 }

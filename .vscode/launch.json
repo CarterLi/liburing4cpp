@@ -8,7 +8,7 @@
             "name": "io_uring",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/io_uring.o",
+            "program": "${workspaceFolder}/build/io_uring",
             "args": [
                 "8080",
                 "1",
@@ -25,14 +25,13 @@
                     "text": "-enable-pretty-printing",
                     "ignoreFailures": true
                 }
-            ],
-            "preLaunchTask": "io_uring"
+            ]
         },
         {
-            "name": "epoll",
+            "name": "poll",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/epoll.o",
+            "program": "${workspaceFolder}/build/poll-epoll",
             "args": [
                 "8080",
                 "1",
@@ -49,8 +48,7 @@
                     "text": "-enable-pretty-printing",
                     "ignoreFailures": true
                 }
-            ],
-            "preLaunchTask": "epoll"
+            ]
         }
     ]
 }
