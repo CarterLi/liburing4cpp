@@ -28,11 +28,6 @@ FetchContent_MakeAvailable(${remote_dependencies})
 ## Configuration ##
 ###################
 
-if(NOT DEFINED ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
-    note("Setting the output directory to 'bin' in the project root")
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin")
-endif()
-
 # This creates a file compile_commands.json in the build directory
 # That contains the compile commands used to actually compile the project
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

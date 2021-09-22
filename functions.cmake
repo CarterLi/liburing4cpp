@@ -6,7 +6,7 @@
 # current project is the top-level project. This checks if it's been defined,
 # and if not, it defines it.
 if(NOT DEFINED PROJECT_IS_TOP_LEVEL)
-    if(${CMAKE_PROJECT_NAME} STREQUAL ${project_name})
+    if("${CMAKE_PROJECT_NAME}" STREQUAL "${PROJECT_NAME}")
         set(PROJECT_IS_TOP_LEVEL ON)
     else()
         set(PROJECT_IS_TOP_LEVEL OFF)
