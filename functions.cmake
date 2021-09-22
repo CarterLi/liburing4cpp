@@ -3,9 +3,9 @@
 ################################################
 
 # PROJECT_IS_TOP_LEVEL is a variable added in CMake 3.21 that checks if the
-# current project is the top-level project. This checks if it's been defined,
-# and if not, it defines it.
-if(NOT DEFINED PROJECT_IS_TOP_LEVEL)
+# current project is the top-level project. This checks if it's built in,
+# and if not, adds a definition for it.
+if("${CMAKE_VERSION}" VERSION_LESS "3.21.0")
     if("${CMAKE_PROJECT_NAME}" STREQUAL "${PROJECT_NAME}")
         set(PROJECT_IS_TOP_LEVEL ON)
     else()
