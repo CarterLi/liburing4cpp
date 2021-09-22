@@ -1,0 +1,67 @@
+{
+    "tasks": [
+        {
+            "type": "cppbuild",
+            "label": "io_uring",
+            "command": "/usr/bin/g++",
+            "args": [
+                "-g",
+                "io_uring/ping-pong.cpp",
+                "build/libfmt.a",
+                "-I./fmt/include",
+                "-I./cxx-yield",
+                "-I.",
+                "-std=c++17",
+                "-flto",
+                "-march=native",
+                "-DUSE_FCONTEXT=1",
+                "-luring",
+                "-lboost_context",
+                "-o",
+                "build/io_uring.o"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "type": "cppbuild",
+            "label": "epoll",
+            "command": "/usr/bin/g++",
+            "args": [
+                "-g",
+                "epoll/ping-pong.cpp",
+                "build/libfmt.a",
+                "-I./fmt/include",
+                "-I./cxx-yield",
+                "-I.",
+                "-std=c++17",
+                "-flto",
+                "-march=native",
+                "-DUSE_FCONTEXT=1",
+                "-lboost_context",
+                "-laio",
+                "-o",
+                "build/epoll.o"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ],
+    "version": "2.0.0"
+}

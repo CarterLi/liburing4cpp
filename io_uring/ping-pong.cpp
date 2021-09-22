@@ -99,7 +99,7 @@ void connect_server(io_coroutine& coro, uint16_t server_port, int msg_count) noe
         .sin_zero = {},
     }; coro.connect(clientfd, reinterpret_cast<sockaddr *>(&addr), sizeof (sockaddr_in), 0).await() < 0) panic("connect");
 
-    for (int num = 0; num < msg_count; ++num) {
+    for (int num = 1; num <= msg_count; ++num) {
         int res = -1;
 #if USE_LINK
         coro.send(clientfd, &num, sizeof num, MSG_NOSIGNAL, IOSQE_IO_LINK).detach();
@@ -143,5 +143,5 @@ int main(int argc, char *argv[]) noexcept {
 #ifndef NDEBUG
     fmt::print("Syscall used: {}\n", host.syscall_count);
 #endif
-    fmt::print("Verify: (1 + {}) * {} / 2 * {} = {}, \n", msg_count, msg_count, client_num, sum, (1 + msg_count) * msg_count / 2 * client_num == sum ? "OK" : "ERROR");
+    fmt::print("Verify: (1 + {}) * {} / 2 * {} = {}, {}\n", msg_count, msg_count, client_num, sum, (1 + msg_count) * msg_count / 2 * client_num == sum ? "OK" : "ERROR");
 }

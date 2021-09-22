@@ -75,7 +75,7 @@ void accept_connection(io_coroutine& coro, uint16_t server_port, int client_num)
 
     if (listen(serverfd, client_num)) panic("listen", errno);
 
-    for (int i = 0; i < client_num; ++i) {
+    for (int i = 1; i <= client_num; ++i) {
         coro.await_poll(serverfd, POLLIN);
         int clientfd = accept(serverfd, nullptr, nullptr);
         if (clientfd < 0) panic("accept");
@@ -147,5 +147,5 @@ int main(int argc, char *argv[]) {
 #ifndef NDEBUG
     fmt::print("Syscall used: {}\n", host.syscall_count);
 #endif
-    fmt::print("Verify: (1 + {}) * {} / 2 * {} = {}, \n", msg_count, msg_count, client_num, sum, (1 + msg_count) * msg_count / 2 * client_num == sum ? "OK" : "ERROR");
+    fmt::print("Verify: (1 + {}) * {} / 2 * {} = {}, {}\n", msg_count, msg_count, client_num, sum, (1 + msg_count) * msg_count / 2 * client_num == sum ? "OK" : "ERROR");
 }
