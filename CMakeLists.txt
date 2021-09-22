@@ -58,6 +58,7 @@ target_link_libraries(
 # Then demo won't get built
 
 if (PROJECT_IS_TOP_LEVEL)
+    note("${PROJECT_NAME} is top level. Building demo projects")
     # Target all the source files in demo
     add_source_dir("demo" ${libname})
 
