@@ -1,6 +1,6 @@
 # liburing4cpp
 
-Simple http server demo using [liburing](http://kernel.dk/io_uring.pdf) and [Cxx-yield](https://github.com/CarterLi/Cxx-yield/)
+Simple networking benchmark tool which compares various linux async programming model `epoll` / `aio` / `io_uring`
 
 Tested on `Linux Ubuntu 5.14.6-051406-generic #202109181232 SMP Sat Sep 18 12:35:35 UTC 2021 x86_64 x86_64 x86_64 GNU/Linux`
 
@@ -8,6 +8,7 @@ Tested on `Linux Ubuntu 5.14.6-051406-generic #202109181232 SMP Sat Sep 18 12:35
 
 * [liburing](http://git.kernel.dk/liburing)
 * [libaio](http://git.infradead.org/users/hch/libaio.git)
+* [Cxx-yield](https://github.com/CarterLi/Cxx-yield/)
 * [fmt](https://github.com/fmtlib/fmt)
 * [boost::context](https://boost.org) ( optional )
 * Compiler that supports C++17
