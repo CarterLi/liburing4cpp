@@ -115,19 +115,40 @@ public:
 #endif
             io_uring_cq_advance(&ring, cqe_count);
             cqe_count = 0;
-            io_uring_submit(&ring);
+            if (ring.flags & IORING_SETUP_SQPOLL) {
+                // in SQPOLL mode, io_uring_submit doesn't truly submit sqes.
+                io_uring_submit_and_wait(&ring, 1);
+            } else {
+                io_uring_submit(&ring);
+            }
             sqe = io_uring_get_sqe(&ring);
-            assert(sqe && "sqe should not be NULL");
+            if (__builtin_expect(!sqe, false)) panic("io_uring_get_sqe", ENOMEM);
             return sqe;
         }
     }
 
+    void register_files(const int* files, uint32_t nr_files) {
+        if (io_uring_register_files(&ring, files, nr_files) < 0) panic("io_uring_register_files");
+#ifdef SYSCALL_COUNT
+        ++syscall_count;
+#endif
+    }
+
+    void update_file(uint32_t off, int file = -1) {
+        if (io_uring_register_files_update(&ring, off, &file, 1) < 0) panic("io_uring_register_files");
+#ifdef SYSCALL_COUNT
+        ++syscall_count;
+#endif
+    }
+
     void run() {
         while (running_coroutines > 0) {
-            if (io_uring_submit_and_wait(&ring, 1) < 0) panic("io_uring_submit_and_wait");
+            if (!((ring.flags & IORING_SETUP_SQPOLL) && io_uring_cq_ready(&ring)) {
+                if (io_uring_submit_and_wait(&ring, 1) < 0) panic("io_uring_submit_and_wait");
 #ifdef SYSCALL_COUNT
-            ++syscall_count;
+                ++syscall_count;
 #endif
+            }
 
             io_uring_cqe *cqe;
             unsigned head;

@@ -17,23 +17,23 @@
 #ifndef USE_LINK
 #   define USE_LINK 0
 #endif
+#ifndef USE_FIXED_FILE
+#   define USE_FIXED_FILE 0
+#endif
+#include "fixed_file.hpp"
 
 enum {
     BUF_SIZE = 512,
 };
 
 void serve(io_coroutine& coro, int clientfd) noexcept {
-    on_scope_exit closesock([=] {
-        shutdown(clientfd, SHUT_RDWR);
-        close(clientfd);
-    });
-
 #ifndef NDEBUG
     fmt::print("sockfd {} is accepted; number of running coroutines: {}\n", clientfd, coro.host.running_coroutines);
 #endif
 #if USE_SPLICE
     int pipefds[2];
     if (pipe(pipefds) < 0) panic("pipe");
+    on_scope_exit([&] { close(pipefds[0]); close(pipefds[1]); });
 #else
     std::vector<char> buf(BUF_SIZE);
 #endif
@@ -51,20 +51,20 @@ void serve(io_coroutine& coro, int clientfd) noexcept {
 #   endif
 #else
         // RECV-SEND will not work with IOSQE_IO_LINK because short read of IORING_OP_RECV is not considered an error
-        int r = coro.recv(clientfd, buf.data(), BUF_SIZE, MSG_NOSIGNAL).await();
+        int r = coro.recv(clientfd, buf.data(), BUF_SIZE, MSG_NOSIGNAL, USE_FIXED_FILE).await();
         if (r <= 0) break;
-        coro.send(clientfd, buf.data(), r, MSG_NOSIGNAL).await();
+        coro.send(clientfd, buf.data(), r, MSG_NOSIGNAL, USE_FIXED_FILE).await();
 #endif
     }
+
+    coro.shutdown(clientfd, SHUT_RDWR, IOSQE_IO_LINK | USE_FIXED_FILE).detach();
+    coro.close(get_file(clientfd)).await();
+    unregister_file(coro.host, clientfd);
 }
 
 void accept_connection(io_coroutine& coro, uint16_t server_port, int client_num) noexcept {
     int serverfd = socket(AF_INET, SOCK_STREAM, 0);
     if (serverfd < 0) panic("socket creation (serverfd)");
-    on_scope_exit closesock([=] {
-        shutdown(serverfd, SHUT_RDWR);
-        close(serverfd);
-    });
 
     if (sockaddr_in addr = {
         .sin_family = AF_INET,
@@ -75,11 +75,19 @@ void accept_connection(io_coroutine& coro, uint16_t server_port, int client_num)
 
     if (listen(serverfd, client_num)) panic("listen", errno);
 
+    serverfd = register_file(coro.host, serverfd);
+
     for (int i = 0; i < client_num; ++i) {
-        int clientfd = coro.accept(serverfd, nullptr, nullptr, 0).await();
+        int clientfd = coro.accept(serverfd, nullptr, nullptr, 0, USE_FIXED_FILE).await();
         if (clientfd < 0) panic("accept");
+        clientfd = register_file(coro.host, clientfd);
+
         new io_coroutine(coro.host, std::bind(serve, std::placeholders::_1, clientfd));
     }
+
+    coro.shutdown(serverfd, SHUT_RDWR, IOSQE_IO_LINK | USE_FIXED_FILE).detach();
+    coro.close(get_file(serverfd)).await();
+    unregister_file(coro.host, serverfd);
 }
 
 int64_t sum = 0;
@@ -87,45 +95,53 @@ int64_t sum = 0;
 void connect_server(io_coroutine& coro, uint16_t server_port, int msg_count) noexcept {
     int clientfd = socket(AF_INET, SOCK_STREAM, 0);
     if (clientfd < 0) panic("socket creation (clientfd)");
-    on_scope_exit closesock([=] {
-        shutdown(clientfd, SHUT_RDWR);
-        close(clientfd);
-    });
+    clientfd = register_file(coro.host, clientfd);
 
-    if (sockaddr_in addr = {
+    sockaddr_in addr = {
         .sin_family = AF_INET,
         .sin_port = htons(server_port),
         .sin_addr = { inet_addr("127.0.0.1") },
         .sin_zero = {},
-    }; coro.connect(clientfd, reinterpret_cast<sockaddr *>(&addr), sizeof (sockaddr_in), 0).await() < 0) panic("connect");
+    };
+
+    if (int ret = coro.connect(clientfd, reinterpret_cast<sockaddr *>(&addr), sizeof (sockaddr_in), 0, USE_FIXED_FILE).await();
+        ret < 0) panic("connect", -ret);
 
     for (int num = 1; num <= msg_count; ++num) {
         int res = -1;
-        coro.send(clientfd, &num, sizeof num, MSG_NOSIGNAL).detach();
-        [[maybe_unused]] int ret = coro.recv(clientfd, &res, sizeof res, MSG_NOSIGNAL).await();
+        coro.send(clientfd, &num, sizeof num, MSG_NOSIGNAL, USE_FIXED_FILE).detach();
+        [[maybe_unused]] int ret = coro.recv(clientfd, &res, sizeof res, MSG_NOSIGNAL, USE_FIXED_FILE).await();
         assert(ret == sizeof res);
         assert(res == num);
         sum += res;
     }
+
+    coro.shutdown(clientfd, SHUT_RDWR, IOSQE_IO_LINK | USE_FIXED_FILE).detach();
+    coro.close(get_file(clientfd)).await();
+    unregister_file(coro.host, clientfd);
 }
 
 int main(int argc, char *argv[]) noexcept {
     uint16_t server_port = 0;
     int client_num = 0, msg_count = 0;
-    if (argc == 4) {
+    bool sqpoll = false;
+    if (argc >= 4) {
         server_port = (uint16_t)std::strtoul(argv[1], nullptr, 10);
         client_num = (int)std::strtol(argv[2], nullptr, 10);
         msg_count = (int)std::strtol(argv[3], nullptr, 10);
+
+        if (argc == 5 && strcasecmp(argv[4], "SQPOLL") == 0) sqpoll = true;
     }
     if (server_port == 0 || client_num <= 0 || msg_count <= 0) {
-        fmt::print("Usage: {} <PORT> <CLIENT_NUM> <MSG_COUNT>\n", argv[0]);
+        fmt::print("Usage: {} <PORT> <CLIENT_NUM> <MSG_COUNT> [SQPOLL]\n", argv[0]);
         return 1;
     }
 
-    fmt::print("io_uring with {} and {}\n", USE_SPLICE ? "splice" : "recv/send", USE_LINK ? "link" : "no_link");
+    fmt::print("io_uring{}{} with {} and {}\n", sqpoll ? " (SQPOLL)" : "", USE_FIXED_FILE ? " (FIXED_FILE)" : "" , USE_SPLICE ? "splice" : "recv/send", USE_LINK ? "link" : "no_link");
     auto start = std::chrono::high_resolution_clock::now();
 
-    io_host host(client_num * 4);
+    io_host host(client_num * 4, sqpoll ? IORING_SETUP_SQPOLL : 0);
+    init_fixed_files(host, client_num);
 
     new io_coroutine(host, std::bind(accept_connection, std::placeholders::_1, server_port, client_num));
 

@@ -197,9 +197,16 @@ public:
     }
 
     [[nodiscard]]
-    prepared_operation shutdown(int fd, int how, unsigned flags, uint8_t iflags = 0) noexcept {
+    prepared_operation shutdown(int fd, int how, uint8_t iflags = 0) noexcept {
         auto* sqe = host.io_uring_get_sqe_safe();
         io_uring_prep_shutdown(sqe, fd, how);
+        return prepared_operation(sqe, this, iflags);
+    }
+
+    [[nodiscard]]
+    prepared_operation close(int fd, uint8_t iflags = 0) noexcept {
+        auto* sqe = host.io_uring_get_sqe_safe();
+        io_uring_prep_close(sqe, fd);
         return prepared_operation(sqe, this, iflags);
     }
 

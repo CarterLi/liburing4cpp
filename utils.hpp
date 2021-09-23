@@ -19,6 +19,9 @@ private:
 
 [[noreturn]]
 void panic(std::string_view sv, int err = 0) noexcept {
+    if (err == 0) err = errno;
+    std::fprintf(stderr, "errno: %d\n", err);
+
 #ifndef NDEBUG
     // https://stackoverflow.com/questions/77005/how-to-automatically-generate-a-stacktrace-when-my-program-crashes
     void *array[32];
@@ -28,19 +31,14 @@ void panic(std::string_view sv, int err = 0) noexcept {
     size = backtrace(array, 32);
 
     // print out all the frames to stderr
-    fprintf(stderr, "Error: errno %d:\n", err);
     backtrace_symbols_fd(array, size, STDERR_FILENO);
 
     // __asm__("int $3");
 #endif
 
-    if (err == 0) err = errno;
-    std::fprintf(stderr, "errno: %d\n", err);
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wterminate"
     if (err == EPIPE) {
-        throw std::runtime_error("Broken pipe: client socket is closed");
+        std::fprintf(stderr, "Error: %s\n", std::runtime_error("Broken pipe: client socket is closed").what());
     }
-    throw std::system_error(err, std::generic_category(), sv.data());
-#pragma GCC diagnostic pop
+    std::fprintf(stderr, "Error: %s\n", std::system_error(err, std::generic_category(), sv.data()).what());
+    std::terminate();
 }

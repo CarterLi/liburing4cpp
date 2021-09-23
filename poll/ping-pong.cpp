@@ -38,6 +38,7 @@ void serve(io_coroutine& coro, int clientfd) noexcept {
 #if USE_SPLICE
     int pipefds[2];
     if (pipe(pipefds) < 0) panic("pipe");
+    on_scope_exit([&] { close(pipefds[0]); close(pipefds[1]); });
 #else
     std::vector<char> buf(BUF_SIZE);
 #endif

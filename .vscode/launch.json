@@ -12,7 +12,8 @@
             "args": [
                 "8080",
                 "1",
-                "1"
+                "100000",
+                "sqpoll"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build",

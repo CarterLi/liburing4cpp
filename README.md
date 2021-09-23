@@ -35,11 +35,13 @@ IO_URING   | SPLICE-SPLICE | 1062135048 | 1134858429 | 1080572551 | 1080572551 |
 
 #### [IO_URING (IORING_IO_CMD) without POLL](https://github.com/CarterLi/liburing4cpp/blob/master/io_uring/ping-pong.cpp)
 
-METHOD        | USE_LINK |        1st |        2nd |        3rd |        mid | syscalls
-:-:           | :-:      |         -: |         -: |         -: |         -: |       -:
-RECV-SEND     | 0        |  888807084 |  866377056 |  932095066 |  888807084 |   200003
-SPLICE-SPLICE | 0        | 3571375121 | 3576119028 | 3632239887 | 3576119028 |   294766
-SPLICE-SPLICE | 1        | 2711935931 | 2696392063 | 2722265501 | 2722265501 |   218582
+METHOD        | ADVANCED FLAGS |        1st |        2nd |        3rd |        mid | syscalls
+:-:           | :-:            |         -: |         -: |         -: |         -: |       -:
+RECV-SEND     | -              |  880839791 |  913602603 |  885234970 |  880839791 |   200004
+RECV-SEND     | FIXED_FILE     |  896688617 |  884431367 |  892066661 |  896688617 |   200011
+RECV-SEND     | SETUP_SQPOLL   | 2368080555 | 2403292628 | 2407004193 | 2368080555 |   200166
+SPLICE-SPLICE | -              | 3571375121 | 3576119028 | 3632239887 | 3576119028 |   294766
+SPLICE-SPLICE | IO_LINK        | 2711935931 | 2696392063 | 2722265501 | 2722265501 |   218582
 
 ### 500 Conns, 500 msgs
 
@@ -56,11 +58,13 @@ IO_URING   | SPLICE-SPLICE | 3002170858 | 3023692843 | 2942249975 | 3023692843 |
 
 #### [IO_URING (IORING_IO_CMD) without POLL](https://github.com/CarterLi/liburing4cpp/blob/master/io_uring/ping-pong.cpp)
 
-METHOD        | USE_LINK |        1st |        2nd |        3rd |        mid | syscalls
-:-:           | :-:      |         -: |         -: |         -: |         -: |       -:
-RECV-SEND     | 0        | 2241744584 | 2224194012 | 2242771549 | 2241744584 |     1502
-SPLICE-SPLICE | 0        | 4158028540 | 4042506178 | 4058224613 | 4058224613 |     1502
-SPLICE-SPLICE | 1        | 3555245458 | 3493551902 | 3482760968 | 3482760968 |     1004
+METHOD        | ADVANCED FLAGS |        1st |        2nd |        3rd |        mid | syscalls
+:-:           | :-:            |         -: |         -: |         -: |         -: |       -:
+RECV-SEND     | -              | 2241744584 | 2224194012 | 2242771549 | 2241744584 |     1502
+RECV-SEND     | FIXED_FILE     | 2309145494 | 2265387230 | 2248800341 | 2265387230 |     3506
+RECV-SEND     | SETUP_SQPOLL   | 2407986207 | 2581908018 | 2473293734 | 2473293734 |    32414
+SPLICE-SPLICE | -              | 4158028540 | 4042506178 | 4058224613 | 4058224613 |     1502
+SPLICE-SPLICE | IO_LINK        | 3555245458 | 3493551902 | 3482760968 | 3482760968 |     1004
 
 ## License
 
