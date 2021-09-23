@@ -20,6 +20,8 @@ Tested on `Linux Ubuntu 5.14.6-051406-generic #202109181232 SMP Sat Sep 18 12:35
 
 ## Benchmark ( smaller is better )
 
+Ref: https://github.com/axboe/liburing/issues/427
+
 ### 1 Conn, 100000 msgs
 
 #### [POLL with plain ordinary linux syscalls](https://github.com/CarterLi/liburing4cpp/blob/master/poll/ping-pong.cpp)
