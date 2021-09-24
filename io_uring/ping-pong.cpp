@@ -6,8 +6,8 @@
 #include <arpa/inet.h>
 #include <vector>
 #include <chrono>
+#include <fmt/format.h>
 
-#include "fmt/format.h"
 #include "io_coroutine.hpp"
 #include "utils.hpp"
 

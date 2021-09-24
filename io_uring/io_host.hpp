@@ -143,7 +143,7 @@ public:
 
     void run() {
         while (running_coroutines > 0) {
-            if (!((ring.flags & IORING_SETUP_SQPOLL) && io_uring_cq_ready(&ring)) {
+            if (!((ring.flags & IORING_SETUP_SQPOLL) && io_uring_cq_ready(&ring))) {
                 if (io_uring_submit_and_wait(&ring, 1) < 0) panic("io_uring_submit_and_wait");
 #ifdef SYSCALL_COUNT
                 ++syscall_count;

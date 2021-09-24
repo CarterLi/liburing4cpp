@@ -24,6 +24,18 @@ Ref: https://github.com/axboe/liburing/issues/427
 
 ### 1 Conn, 100000 msgs
 
+#### [bench](https://github.com/CarterLi/liburing4cpp/blob/master/io_uring/bench.cpp)
+
+```shell
+$ ./bench
+coro.nop().await()    5727571288
+plain IORING_OP_NOP:  5471295618
+this_thread::yield:   4818987660
+pause:                  41517712
+```
+
+About 5% overhead to use coroutines
+
 #### [POLL with plain ordinary linux syscalls](https://github.com/CarterLi/liburing4cpp/blob/master/poll/ping-pong.cpp)
 
 TYPE       | METHOD        |        1st |        2nd |        3rd |        mid | syscalls
@@ -50,7 +62,7 @@ SPLICE-SPLICE | IO_LINK        | 2711935931 | 2696392063 | 2722265501 | 27222655
 #### [POLL with plain ordinary linux syscalls](https://github.com/CarterLi/liburing4cpp/blob/master/poll/ping-pong.cpp)
 
 TYPE       | METHOD        |        1st |        2nd |        3rd |        mid | syscalls
-:-:        | :-:           |         -: |         -: |         -: |         -: |      -:
+:-:        | :-:           |         -: |         -: |         -: |         -: |       -:
 EPOLL      | RECV-SEND     | 3417458521 | 3349537493 | 3359452396 | 3359452396 |  1004502
 EPOLL      | SPLICE-SPLICE | 3408531236 | 3325660818 | 3303161806 | 3325660818 |  1004502
 AIO        | RECV-SEND     | 2770272374 | 2763336323 | 2802280021 | 2770272374 |     5001
@@ -67,6 +79,15 @@ RECV-SEND     | FIXED_FILE     | 2309145494 | 2265387230 | 2248800341 | 22653872
 RECV-SEND     | SETUP_SQPOLL   | 2407986207 | 2581908018 | 2473293734 | 2473293734 |    32414
 SPLICE-SPLICE | -              | 4158028540 | 4042506178 | 4058224613 | 4058224613 |     1502
 SPLICE-SPLICE | IO_LINK        | 3555245458 | 3493551902 | 3482760968 | 3482760968 |     1004
+
+## Build ( Ubuntu )
+
+```shell
+$ git submodule update --init
+$ sudo apt install libfmt-dev libboost-context-dev
+$ cd build
+$ make
+```
 
 ## License
 

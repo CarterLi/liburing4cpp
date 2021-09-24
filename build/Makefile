@@ -1,34 +1,36 @@
-LDFLAGS?=-lboost_context
-
 ifeq ($(MODE),DEBUG)
 	CXXFLAGS ?= -O0 -rdynamic -D_LIBCPP_DEBUG_LEVEL=1 -fno-omit-frame-pointer -fsanitize=address
 else
-	CXXFLAGS ?= -O3 -DNDEBUG -march=native -mtune=intel
+	CXXFLAGS ?= -O3 -DNDEBUG -march=native
 endif
 
-all: io_uring poll-epoll poll-io_uring poll-aio
+ifeq ($(CXX),clang++)
+	override CXXFLAGS += -stdlib=libc++ -lc++ -lc++abi
+endif
 
-libaco.a:
-	$(CC) -g -O3 -Wall -Werror -flto ../cxx-yield/libaco/acosw.S ../cxx-yield/libaco/aco.c -c -fPIE
-	ar rcs -flto libaco.a acosw.o aco.o
-	rm acosw.o aco.o
+override CXXFLAGS += -lboost_context -lfmt -I.. -I../cxx-yield -D_GNU_SOURCE=1 -DUSE_FCONTEXT=1 -DSYSCALL_COUNT=1 -std=c++17 -flto -march=native -g
 
-libfmt.a:
-	$(CXX) -g -O3 -Wall -Werror -flto ../fmt/src/format.cc ../fmt/src/os.cc -I../fmt/include -c -fPIE
-	ar rcs -flto libfmt.a format.o os.o
-	rm format.o os.o
+all_targets = bench io_uring poll-epoll poll-io_uring poll-aio
 
-io_uring: libfmt.a ../io_uring/ping-pong.cpp ../yield.hpp ../utils.hpp ../io_uring/io_coroutine.hpp ../io_uring/io_host.hpp ../io_uring/fixed_file.hpp
-	$(CXX) $(CXXFLAGS) ../io_uring/ping-pong.cpp libfmt.a -I../fmt/include -I.. -D_GNU_SOURCE=1 -std=c++17 -flto -march=native -g -luring -o io_uring -DUSE_FCONTEXT=1 -DSYSCALL_COUNT=1 $(LDFLAGS)
+all: $(all_targets)
 
-poll-epoll: libfmt.a ../poll/ping-pong.cpp ../yield.hpp ../utils.hpp ../poll/io_coroutine.hpp ../poll/io_host.hpp
-	$(CXX) $(CXXFLAGS) ../poll/ping-pong.cpp libfmt.a -I../fmt/include -I.. -D_GNU_SOURCE=1 -std=c++17 -flto -march=native -g -o poll-epoll -DUSE_FCONTEXT=1 -DSYSCALL_COUNT=1 $(LDFLAGS)
+help:
+	@echo 'make [MODE={DEBUG,RELEASE}] [CXX={g++|clang++}]'
 
-poll-io_uring: libfmt.a ../poll/ping-pong.cpp ../yield.hpp ../utils.hpp ../poll/io_coroutine.hpp ../poll/io_host.hpp
-	$(CXX) $(CXXFLAGS) ../poll/ping-pong.cpp libfmt.a -I../fmt/include -I.. -D_GNU_SOURCE=1 -std=c++17 -flto -march=native -g -DUSE_LIBURING=1 -luring -o poll-io_uring -DUSE_FCONTEXT=1 -DSYSCALL_COUNT=1 $(LDFLAGS)
+bench: ../io_uring/bench.cpp ../io_uring/io_coroutine.hpp ../io_uring/io_host.hpp
+	$(CXX) $(CXXFLAGS) -luring ../io_uring/bench.cpp -o bench
 
-poll-aio: libfmt.a ../poll/ping-pong.cpp ../yield.hpp ../utils.hpp ../poll/io_coroutine.hpp ../poll/io_host.hpp
-	$(CXX) $(CXXFLAGS) ../poll/ping-pong.cpp libfmt.a -I../fmt/include -I.. -D_GNU_SOURCE=1 -std=c++17 -flto -march=native -g -DUSE_LIBAIO=1 -laio -o poll-aio -DUSE_FCONTEXT=1 -DSYSCALL_COUNT=1 $(LDFLAGS)
+io_uring: ../io_uring/ping-pong.cpp ../utils.hpp ../io_uring/io_coroutine.hpp ../io_uring/io_host.hpp ../io_uring/fixed_file.hpp
+	$(CXX) $(CXXFLAGS) -luring ../io_uring/ping-pong.cpp -o io_uring
+
+poll-epoll: ../poll/ping-pong.cpp ../utils.hpp ../poll/io_coroutine.hpp ../poll/io_host.hpp
+	$(CXX) $(CXXFLAGS) ../poll/ping-pong.cpp -o poll-epoll
+
+poll-io_uring: ../poll/ping-pong.cpp ../utils.hpp ../poll/io_coroutine.hpp ../poll/io_host.hpp
+	$(CXX) $(CXXFLAGS) -DUSE_LIBURING=1 -luring ../poll/ping-pong.cpp -o poll-io_uring
+
+poll-aio: ../poll/ping-pong.cpp ../utils.hpp ../poll/io_coroutine.hpp ../poll/io_host.hpp
+	$(CXX) $(CXXFLAGS) -DUSE_LIBAIO=1 -laio ../poll/ping-pong.cpp -o poll-aio
 
 clean:
-	rm -f io_uring poll-epoll poll-io_uring poll-aio
+	rm -f $(all_targets)

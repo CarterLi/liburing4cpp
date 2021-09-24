@@ -2,6 +2,7 @@
 #include <string_view>
 #include <array>
 #include <utility>
+#include <system_error>
 
 #ifndef NDEBUG
 #   include <execinfo.h>
