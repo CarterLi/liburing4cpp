@@ -21,7 +21,7 @@ int runningCoroutines = 0;
 
 task<> accept_connection(io_service& service, int serverfd) {
     while (int clientfd = co_await service.accept(serverfd, nullptr, nullptr)) {
-        [=, &service](int clientfd) -> task<> {
+        // [=, &service](int clientfd) -> task<> {
             fmt::print("sockfd {} is accepted; number of running coroutines: {}\n",
                 clientfd, ++runningCoroutines);
 #if USE_SPLICE
@@ -63,7 +63,7 @@ task<> accept_connection(io_service& service, int serverfd) {
             co_await service.close(clientfd);
             fmt::print("sockfd {} is closed; number of running coroutines: {}\n",
                 clientfd, --runningCoroutines);
-        }(clientfd);
+        // }(clientfd);
     }
 }
 
