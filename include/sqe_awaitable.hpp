@@ -1,19 +1,12 @@
 #pragma once
-#if __has_include(<coroutine>)
-#   include <coroutine>
-namespace std::experimental {
-    using std::suspend_always;
-    using std::suspend_never;
-    using std::coroutine_handle;
-}
-#else
-#   include <experimental/coroutine>
-#endif
+
 #include <climits>
 #include <liburing.h>
 #include <type_traits>
 #include <optional>
 #include <cassert>
+
+#include "stdlib_coroutine.hpp"
 
 struct resolver {
     virtual void resolve(int result) noexcept = 0;
@@ -28,7 +21,7 @@ struct resume_resolver final: resolver {
     }
 
 private:
-    std::experimental::coroutine_handle<> handle;
+    std::coroutine_handle<> handle;
     int result = 0;
 };
 static_assert(std::is_trivially_destructible_v<resume_resolver>);
@@ -81,7 +74,7 @@ struct sqe_awaitable {
 
             constexpr bool await_ready() const noexcept { return false; }
 
-            void await_suspend(std::experimental::coroutine_handle<> handle) noexcept {
+            void await_suspend(std::coroutine_handle<> handle) noexcept {
                 resolver.handle = handle;
                 io_uring_sqe_set_data(sqe, &resolver);
             }

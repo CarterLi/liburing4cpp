@@ -1,20 +1,11 @@
 #pragma once
 
-#if __has_include(<coroutine>)
-#   include <coroutine>
-namespace std::experimental {
-    using std::suspend_always;
-    using std::suspend_never;
-    using std::coroutine_handle;
-    using std::noop_coroutine;
-}
-#else
-#   include <experimental/coroutine>
-#endif
 #include <exception>
 #include <variant>
 #include <array>
 #include <cassert>
+
+#include "stdlib_coroutine.hpp"
 
 template <typename T, bool nothrow>
 struct task;
@@ -23,23 +14,23 @@ struct task;
 template <typename T, bool nothrow>
 struct task_promise_base {
     task<T, nothrow> get_return_object();
-    auto initial_suspend() { return std::experimental::suspend_never(); }
+    auto initial_suspend() { return std::suspend_never(); }
     auto final_suspend() noexcept {
-        struct Awaiter: std::experimental::suspend_always {
+        struct Awaiter: std::suspend_always {
             task_promise_base *me_;
 
             Awaiter(task_promise_base *me): me_(me) {};
-            std::experimental::coroutine_handle<> await_suspend(std::experimental::coroutine_handle<> caller) const noexcept {
+            std::coroutine_handle<> await_suspend(std::coroutine_handle<> caller) const noexcept {
                 if (__builtin_expect(me_->result_.index() == 3, false)) {
                     // FIXME: destroy current coroutine; otherwise memory leaks.
                     if (me_->waiter_) {
                         me_->waiter_.destroy();
                     }
-                    std::experimental::coroutine_handle<task_promise_base>::from_promise(*me_).destroy();
+                    std::coroutine_handle<task_promise_base>::from_promise(*me_).destroy();
                 } else if (me_->waiter_) {
                     return me_->waiter_;
                 }
-                return std::experimental::noop_coroutine();
+                return std::noop_coroutine();
             }
         };
         return Awaiter(this);
@@ -56,7 +47,7 @@ struct task_promise_base {
 protected:
     friend struct task<T, nothrow>;
     task_promise_base() = default;
-    std::experimental::coroutine_handle<> waiter_;
+    std::coroutine_handle<> waiter_;
     std::variant<
         std::monostate,
         std::conditional_t<std::is_void_v<T>, std::monostate, T>,
@@ -100,7 +91,7 @@ struct task_promise<void, nothrow> final: task_promise_base<void, nothrow> {
 template <typename T = void, bool nothrow = false>
 struct task final {
     using promise_type = task_promise<T, nothrow>;
-    using handle_t = std::experimental::coroutine_handle<promise_type>;
+    using handle_t = std::coroutine_handle<promise_type>;
 
     task(const task&) = delete;
     task& operator =(const task&) = delete;
@@ -111,7 +102,7 @@ struct task final {
     }
 
     template <typename T_, bool nothrow_>
-    void await_suspend(std::experimental::coroutine_handle<task_promise<T_, nothrow_>> caller) noexcept {
+    void await_suspend(std::coroutine_handle<task_promise<T_, nothrow_>> caller) noexcept {
         coro_.promise().waiter_ = caller;
     }
 
