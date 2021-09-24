@@ -41,7 +41,7 @@ task<> accept_connection(io_service& service, int serverfd) {
 #endif
 #if USE_SPLICE
 #   if USE_LINK
-                auto tresult = service.splice(clientfd, -1, pipefds[1], -1, -1, SPLICE_F_MOVE, IOSQE_IO_HARDLINK);
+                service.splice(clientfd, -1, pipefds[1], -1, -1, SPLICE_F_MOVE, IOSQE_IO_HARDLINK);
                 int r = co_await service.splice(pipefds[0], -1, clientfd, -1, -1, SPLICE_F_MOVE | SPLICE_F_NONBLOCK);
                 if (r <= 0) break;
 #   else
@@ -52,13 +52,6 @@ task<> accept_connection(io_service& service, int serverfd) {
 #else
 #   if USE_LINK
 #       error "This won't work because short read of IORING_OP_RECV is not considered an error"
-                auto tresult = service.recv(clientfd, buf.data(), BUF_SIZE, MSG_NOSIGNAL, IOSQE_IO_LINK);
-                int r = co_await service.send(clientfd, buf.data(), BUF_SIZE, MSG_NOSIGNAL);
-                if (r <= 0) {
-                    auto r1 = tresult.get_result();
-                    if (r1 <= 0) break;
-                    co_await service.send(clientfd, buf.data(), r, MSG_NOSIGNAL);
-                }
 #   else
                 int r = co_await service.recv(clientfd, buf.data(), BUF_SIZE, MSG_NOSIGNAL);
                 if (r <= 0) break;
@@ -66,7 +59,8 @@ task<> accept_connection(io_service& service, int serverfd) {
 #   endif
 #endif
             }
-            shutdown(clientfd, SHUT_RDWR);
+            service.shutdown(clientfd, SHUT_RDWR, IOSQE_IO_LINK);
+            co_await service.close(clientfd);
             fmt::print("sockfd {} is closed; number of running coroutines: {}\n",
                 clientfd, --runningCoroutines);
         }(clientfd);

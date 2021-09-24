@@ -107,6 +107,7 @@ task<> accept_connection(io_service& service, int serverfd, int dirfd) {
             }
 
             // Clean up
+            co_await service.shutdown(clientfd, SHUT_RDWR);
             co_await service.close(clientfd);
             fmt::print("sockfd {} is closed, time used {:%T}\n",
                 clientfd,

@@ -658,7 +658,7 @@ public:
 
             io_uring_for_each_cqe(&ring, head, cqe) {
                 ++cqe_count;
-                auto coro = static_cast<cqe_resolver *>(io_uring_cqe_get_data(cqe));
+                auto coro = static_cast<resolver *>(io_uring_cqe_get_data(cqe));
                 if (coro) coro->resolve(cqe->res);
             }
 
