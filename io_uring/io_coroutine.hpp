@@ -155,6 +155,13 @@ public:
     }
 
     [[nodiscard]]
+    prepared_operation accept_direct(int fd, sockaddr *addr, socklen_t *addrlen, int flags, int file_index, uint8_t iflags = 0) noexcept {
+        auto* sqe = host.io_uring_get_sqe_safe();
+        io_uring_prep_accept_direct(sqe, fd, addr, addrlen, flags, file_index);
+        return prepared_operation(sqe, this, iflags);
+    }
+
+    [[nodiscard]]
     prepared_operation connect(int fd, sockaddr *addr, socklen_t addrlen, int flags, uint8_t iflags = 0) noexcept {
         auto* sqe = host.io_uring_get_sqe_safe();
         io_uring_prep_connect(sqe, fd, addr, addrlen);
@@ -207,6 +214,13 @@ public:
     prepared_operation close(int fd, uint8_t iflags = 0) noexcept {
         auto* sqe = host.io_uring_get_sqe_safe();
         io_uring_prep_close(sqe, fd);
+        return prepared_operation(sqe, this, iflags);
+    }
+
+    [[nodiscard]]
+    prepared_operation close_direct(int file_index, uint8_t iflags = 0) noexcept {
+        auto* sqe = host.io_uring_get_sqe_safe();
+        io_uring_prep_close_direct(sqe, file_index);
         return prepared_operation(sqe, this, iflags);
     }
 

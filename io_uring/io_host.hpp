@@ -16,8 +16,10 @@ struct nextable {
 
 class io_host {
 public:
-    io_host(int entries, int flags = 0) {
-        if (io_uring_queue_init(entries, &ring, flags) < 0) panic("queue_init");
+    io_host(int entries, uint32_t flags = 0, uint32_t wq_fd = 0)
+        : ring_params({ .flags = flags, .wq_fd = wq_fd })
+    {
+        if (io_uring_queue_init_params(entries, &ring, &ring_params) < 0) panic("io_uring_queue_init_params");
 #ifdef SYSCALL_COUNT
         ++syscall_count;
 #endif
@@ -110,17 +112,17 @@ public:
 #ifndef NDEBUG
             printf(__FILE__ ": SQ is full, flushing %u cqe(s)\n", cqe_count);
 #endif
-#ifdef SYSCALL_COUNT
-            ++syscall_count;
-#endif
             io_uring_cq_advance(&ring, cqe_count);
             cqe_count = 0;
             if (ring.flags & IORING_SETUP_SQPOLL) {
-                // in SQPOLL mode, io_uring_submit doesn't truly submit sqes.
-                io_uring_submit_and_wait(&ring, 1);
+                // We use `__io_uring_sqring_wait` directly because we know there is no sqe left
+                if (__io_uring_sqring_wait(&ring) < 0) panic("__io_uring_sqring_wait");
             } else {
-                io_uring_submit(&ring);
+                if (io_uring_submit(&ring) < 0) panic("io_uring_submit");
             }
+#ifdef SYSCALL_COUNT
+            ++syscall_count;
+#endif
             sqe = io_uring_get_sqe(&ring);
             if (__builtin_expect(!sqe, false)) panic("io_uring_get_sqe", ENOMEM);
             return sqe;
@@ -143,7 +145,7 @@ public:
 
     void run() {
         while (running_coroutines > 0) {
-            if (!((ring.flags & IORING_SETUP_SQPOLL) && io_uring_cq_ready(&ring))) {
+            if (!io_uring_cq_ready(&ring)) {
                 if (io_uring_submit_and_wait(&ring, 1) < 0) panic("io_uring_submit_and_wait");
 #ifdef SYSCALL_COUNT
                 ++syscall_count;
@@ -167,6 +169,7 @@ public:
     }
 
     io_uring ring;
+    io_uring_params ring_params;
     int cqe_count = 0;
     int running_coroutines = 0;
 #ifdef SYSCALL_COUNT
