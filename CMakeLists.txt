@@ -61,4 +61,8 @@ if (PROJECT_IS_TOP_LEVEL)
     note("${PROJECT_NAME} is top level. Building demo projects")
     # Target all the source files in demo
     add_source_dir("demo" ${libname})
+
+    include(CTest)
+
+    add_test_dir("tests" ${libname})
 endif()
