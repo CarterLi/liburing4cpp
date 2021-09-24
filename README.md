@@ -43,11 +43,13 @@ int main() {
 ### demo/bench
 
 ```
-service.yield:        6527085832
-plain IORING_OP_NOP:  5884262348
-this_thread::yield:   4486533904
-pause:                  41502717
+service.yield:        5436209973
+plain IORING_OP_NOP:  5268565967
+this_thread::yield:   4750992301
+pause:                  41557653
 ```
+
+About 3% overhead
 
 ### demo/echo_server
 
@@ -88,12 +90,6 @@ NOTE: `task` is not lazily executed, which is easy to use of course, but also ca
 ```
 
 The task instance returned by `service.read` is destructed, but the kernel task itself is **NOT** canceled. The memory of variable `c` will be written sometime. In this case, out-of-scope stack memory access will happen.
-
-### promise.hpp
-
-An awaitable class. It's different from task that it can't used for return type, but can be created directly without calling an async function.
-
-Its design is highly inspired by [Promise of JavaScript](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise)
 
 ### io_service.hpp
 

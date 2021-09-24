@@ -48,7 +48,7 @@ struct deferred_resolver final: resolver {
 };
 
 struct callback_resolver final: resolver {
-    callback_resolver(std::function<void (int result)>&& cb): cb(cb) {}
+    callback_resolver(std::function<void (int result)>&& cb): cb(std::move(cb)) {}
 
     void resolve(int result) noexcept override {
         this->cb(result);

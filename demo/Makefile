@@ -13,7 +13,7 @@ else
 	override CXXFLAGS += -fcoroutines
 endif
 
-override CXXFLAGS += -g -Wall -std=c++17 -I.. -I../fmt/include ../fmt/src/format.cc -luring -pthread
+override CXXFLAGS += -g -Wall -std=c++17 -I.. -lfmt -luring -pthread
 
 all_targets = file_server http_client link_cp threading test bench echo_server
 
