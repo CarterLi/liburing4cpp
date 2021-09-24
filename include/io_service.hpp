@@ -12,85 +12,9 @@
 #   include <execinfo.h>
 #endif
 
-#include "promise.hpp"
+#include "sqe_awaitable.hpp"
 #include "task.hpp"
-
-/** Fill an iovec struct using buf & size */
-constexpr inline iovec to_iov(void *buf, size_t size) noexcept {
-    return { buf, size };
-}
-/** Fill an iovec struct using string view */
-constexpr inline iovec to_iov(std::string_view sv) noexcept {
-    return to_iov(const_cast<char *>(sv.data()), sv.size());
-}
-/** Fill an iovec struct using std::array */
-template <size_t N>
-constexpr inline iovec to_iov(std::array<char, N>& array) noexcept {
-    return to_iov(array.data(), array.size());
-}
-
-template <typename Fn>
-struct on_scope_exit {
-    on_scope_exit(Fn &&fn): _fn(std::move(fn)) {}
-    ~on_scope_exit() { this->_fn(); }
-
-private:
-    Fn _fn;
-};
-
-[[nodiscard]]
-constexpr inline __kernel_timespec dur2ts(std::chrono::nanoseconds dur) noexcept {
-    auto secs = std::chrono::duration_cast<std::chrono::seconds>(dur);
-    dur -= secs;
-    return { secs.count(), dur.count() };
-}
-
-/** Convert errno to exception
- * @throw std::runtime_error / std::system_error
- * @return never
- */
-[[noreturn]]
-void panic(std::string_view sv, int err) {
-#ifndef NDEBUG
-    // https://stackoverflow.com/questions/77005/how-to-automatically-generate-a-stacktrace-when-my-program-crashes
-    void *array[32];
-    size_t size;
-
-    // get void*'s for all entries on the stack
-    size = backtrace(array, 32);
-
-    // print out all the frames to stderr
-    fprintf(stderr, "Error: errno %d:\n", err);
-    backtrace_symbols_fd(array, size, STDERR_FILENO);
-
-    // __asm__("int $3");
-#endif
-
-    throw std::system_error(err, std::generic_category(), sv.data());
-}
-
-struct panic_on_err {
-    panic_on_err(std::string_view _command, bool _use_errno)
-        : command(_command)
-        , use_errno(_use_errno) {}
-    std::string_view command;
-    bool use_errno;
-};
-
-inline int operator |(int ret, panic_on_err&& poe) {
-    if (ret < 0) {
-        if (poe.use_errno) {
-            panic(poe.command, errno);
-        } else {
-            if (ret != -ETIME) panic(poe.command, -ret);
-        }
-    }
-    return ret;
-}
-template <bool nothrow>
-inline task<int> operator |(task<int, nothrow> tret, panic_on_err&& poe) {
-    co_return (co_await tret) | std::move(poe);
-}
+#include "utils.hpp"
 
 class io_service {
 public:
@@ -200,7 +124,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> readv(
+    sqe_awaitable readv(
         int fd,
         const iovec* iovecs,
         unsigned nr_vecs,
@@ -218,7 +142,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> writev(
+    sqe_awaitable writev(
         int fd,
         const iovec* iovecs,
         unsigned nr_vecs,
@@ -236,7 +160,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> read(
+    sqe_awaitable read(
         int fd,
         void* buf,
         unsigned nbytes,
@@ -254,7 +178,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> write(
+    sqe_awaitable write(
         int fd,
         const void* buf,
         unsigned nbytes,
@@ -273,7 +197,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> read_fixed(
+    sqe_awaitable read_fixed(
         int fd,
         void* buf,
         unsigned nbytes,
@@ -293,7 +217,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> write_fixed(
+    sqe_awaitable write_fixed(
         int fd,
         const void* buf,
         unsigned nbytes,
@@ -312,7 +236,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> fsync(
+    sqe_awaitable fsync(
         int fd,
         unsigned fsync_flags,
         uint8_t iflags = 0
@@ -328,7 +252,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> sync_file_range(
+    sqe_awaitable sync_file_range(
         int fd,
         off64_t offset,
         off64_t nbytes,
@@ -348,7 +272,7 @@ public:
      * @return a task object for awaiting
      */
 
-    task<int, true> recvmsg(
+    sqe_awaitable recvmsg(
         int sockfd,
         msghdr* msg,
         uint32_t flags,
@@ -365,7 +289,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> sendmsg(
+    sqe_awaitable sendmsg(
         int sockfd,
         const msghdr* msg,
         uint32_t flags,
@@ -382,7 +306,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> recv(
+    sqe_awaitable recv(
         int sockfd,
         void* buf,
         unsigned nbytes,
@@ -400,7 +324,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> send(
+    sqe_awaitable send(
         int sockfd,
         const void* buf,
         unsigned nbytes,
@@ -418,7 +342,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> poll(
+    sqe_awaitable poll(
         int fd,
         short poll_mask,
         uint8_t iflags = 0
@@ -433,7 +357,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> yield(
+    sqe_awaitable yield(
         uint8_t iflags = 0
     ) noexcept {
         auto* sqe = io_uring_get_sqe_safe();
@@ -447,7 +371,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> accept(
+    sqe_awaitable accept(
         int fd,
         sockaddr *addr,
         socklen_t *addrlen,
@@ -465,7 +389,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> connect(
+    sqe_awaitable connect(
         int fd,
         sockaddr *addr,
         socklen_t addrlen,
@@ -483,24 +407,13 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> timeout(
+    sqe_awaitable timeout(
         __kernel_timespec *ts,
         uint8_t iflags = 0
     ) noexcept {
         auto* sqe = io_uring_get_sqe_safe();
         io_uring_prep_timeout(sqe, ts, 0, 0);
-        co_return co_await await_work(sqe, iflags);
-    }
-
-    task<int, true> timeout(
-        std::chrono::nanoseconds dur,
-        uint8_t iflags = 0
-    ) noexcept {
-        __kernel_timespec ts = dur2ts(dur);
-        // Everytime we pass pointers into other function,
-        // we MUST use co_return co_await to insure that variable
-        // isn't destructed before await_work truly returns
-        co_return co_await timeout(&ts, iflags);
+        return await_work(sqe, iflags);
     }
 
     /** Open and possibly create a file asynchronously
@@ -509,7 +422,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> openat(
+    sqe_awaitable openat(
         int dfd,
         const char *path,
         int flags,
@@ -527,7 +440,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> close(
+    sqe_awaitable close(
         int fd,
         uint8_t iflags = 0
     ) noexcept {
@@ -542,7 +455,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> statx(
+    sqe_awaitable statx(
         int dfd,
         const char *path,
         int flags,
@@ -561,7 +474,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> splice(
+    sqe_awaitable splice(
         int fd_in,
         loff_t off_in,
         int fd_out,
@@ -581,21 +494,16 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> tee(
+    sqe_awaitable tee(
         int fd_in,
         int fd_out,
         size_t nbytes,
         unsigned flags,
         uint8_t iflags = 0
     ) {
-        if (probe_ops[IORING_OP_TEE]) {
-            auto* sqe = io_uring_get_sqe_safe();
-            io_uring_prep_tee(sqe, fd_in, fd_out, nbytes, flags);
-            co_return co_await await_work(sqe, iflags);
-        } else {
-            co_await yield(iflags);
-            co_return ::tee(fd_in, fd_out, nbytes, flags);
-        }
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_tee(sqe, fd_in, fd_out, nbytes, flags);
+        return await_work(sqe, iflags);
     }
 
     /** Shut down part of a full-duplex connection asynchronously
@@ -604,20 +512,14 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> shutdown(
+    sqe_awaitable shutdown(
         int fd,
         int how,
-        unsigned flags,
         uint8_t iflags = 0
     ) {
-        if (probe_ops[IORING_OP_SHUTDOWN]) {
-            auto* sqe = io_uring_get_sqe_safe();
-            io_uring_prep_shutdown(sqe, fd, how);
-            co_return co_await await_work(sqe, iflags);
-        } else {
-            co_await yield(iflags);
-            co_return ::shutdown(fd, how);
-        }
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_shutdown(sqe, fd, how);
+        return await_work(sqe, iflags);
     }
 
     /** Change the name or location of a file asynchronously
@@ -626,7 +528,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> renameat(
+    sqe_awaitable renameat(
         int olddfd,
         const char *oldpath,
         int newdfd,
@@ -634,14 +536,9 @@ public:
         unsigned flags,
         uint8_t iflags = 0
     ) {
-        if (probe_ops[IORING_OP_RENAMEAT]) {
-            auto* sqe = io_uring_get_sqe_safe();
-            io_uring_prep_renameat(sqe, olddfd, oldpath, newdfd, newpath, flags);
-            co_return co_await await_work(sqe, iflags);
-        } else {
-            co_await yield(iflags);
-            co_return ::renameat2(olddfd, oldpath, newdfd, newpath, flags);
-        }
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_renameat(sqe, olddfd, oldpath, newdfd, newpath, flags);
+        return await_work(sqe, iflags);
     }
 
     /** Create a directory asynchronously
@@ -650,20 +547,15 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> mkdirat(
+    sqe_awaitable mkdirat(
         int dirfd,
         const char *pathname,
         mode_t mode,
         uint8_t iflags = 0
     ) {
-        if (probe_ops[IORING_OP_MKDIRAT]) {
-            auto* sqe = io_uring_get_sqe_safe();
-            io_uring_prep_mkdirat(sqe, dirfd, pathname, mode);
-            co_return co_await await_work(sqe, iflags);
-        } else {
-            co_await yield(iflags);
-            co_return ::mkdirat(dirfd, pathname, mode);
-        }
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_mkdirat(sqe, dirfd, pathname, mode);
+        return await_work(sqe, iflags);
     }
 
     /** Make a new name for a file asynchronously
@@ -672,20 +564,15 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> symlinkat(
+    sqe_awaitable symlinkat(
         const char *target,
         int newdirfd,
         const char *linkpath,
         uint8_t iflags = 0
     ) {
-        if (probe_ops[IORING_OP_SYMLINKAT]) {
-            auto* sqe = io_uring_get_sqe_safe();
-            io_uring_prep_symlinkat(sqe, target, newdirfd, linkpath);
-            co_return co_await await_work(sqe, iflags);
-        } else {
-            co_await yield(iflags);
-            co_return ::symlinkat(target, newdirfd, linkpath);
-        }
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_symlinkat(sqe, target, newdirfd, linkpath);
+        return await_work(sqe, iflags);
     }
 
     /** Make a new name for a file asynchronously
@@ -694,7 +581,7 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> linkat(
+    sqe_awaitable linkat(
         int olddirfd,
         const char *oldpath,
         int newdirfd,
@@ -702,14 +589,9 @@ public:
         int flags,
         uint8_t iflags = 0
     ) {
-        if (probe_ops[IORING_OP_LINKAT]) {
-            auto* sqe = io_uring_get_sqe_safe();
-            io_uring_prep_linkat(sqe, olddirfd, oldpath, newdirfd, newpath, flags);
-            co_return co_await await_work(sqe, iflags);
-        } else {
-            co_await yield(iflags);
-            co_return ::linkat(olddirfd, oldpath, newdirfd, newpath, flags);
-        }
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_linkat(sqe, olddirfd, oldpath, newdirfd, newpath, flags);
+        return await_work(sqe, iflags);
     }
 
     /** Delete a name and possibly the file it refers to asynchronously
@@ -718,35 +600,24 @@ public:
      * @param iflags IOSQE_* flags
      * @return a task object for awaiting
      */
-    task<int, true> unlinkat(
+    sqe_awaitable unlinkat(
         int dfd,
         const char *path,
         unsigned flags,
         uint8_t iflags = 0
     ) {
-        if (probe_ops[IORING_OP_UNLINKAT]) {
-            auto* sqe = io_uring_get_sqe_safe();
-            io_uring_prep_unlinkat(sqe, dfd, path, flags);
-            co_return co_await await_work(sqe, iflags);
-        } else {
-            co_await yield(iflags);
-            co_return ::unlinkat(dfd, path, flags);
-        }
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_unlinkat(sqe, dfd, path, flags);
+        return await_work(sqe, iflags);
     }
 
 private:
-    task<int, true> await_work(
+    sqe_awaitable await_work(
         io_uring_sqe* sqe,
         uint8_t iflags
     ) noexcept {
-        promise<int, true> p([] (promise<int, true>* self, void* user_data) noexcept {
-            auto* service = static_cast<io_service *>(user_data);
-            io_uring_sqe *sqe = service->io_uring_get_sqe_safe();
-            io_uring_prep_cancel(sqe, self, 0);
-        }, this);
         io_uring_sqe_set_flags(sqe, iflags);
-        io_uring_sqe_set_data(sqe, &p);
-        co_return co_await p;
+        return sqe_awaitable(sqe);
     }
 
 public:
@@ -767,8 +638,8 @@ public:
             cqe_count = 0;
             io_uring_submit(&ring);
             sqe = io_uring_get_sqe(&ring);
-            assert(sqe && "sqe should not be NULL");
-            return sqe;
+            if (__builtin_expect(!!sqe, true)) return sqe;
+            panic("io_uring_get_sqe", ENOMEM);
         }
     }
 
@@ -787,7 +658,7 @@ public:
 
             io_uring_for_each_cqe(&ring, head, cqe) {
                 ++cqe_count;
-                auto coro = static_cast<promise<int, true> *>(io_uring_cqe_get_data(cqe));
+                auto coro = static_cast<cqe_resolver *>(io_uring_cqe_get_data(cqe));
                 if (coro) coro->resolve(cqe->res);
             }
 

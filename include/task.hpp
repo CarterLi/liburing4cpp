@@ -16,11 +16,12 @@ namespace std::experimental {
 #include <array>
 #include <cassert>
 
-#include "cancelable.hpp"
+template <typename T, bool nothrow>
+struct task;
 
 // only for internal usage
 template <typename T, bool nothrow>
-struct task_promise_base: cancelable_promise_base {
+struct task_promise_base {
     task<T, nothrow> get_return_object();
     auto initial_suspend() { return std::experimental::suspend_never(); }
     auto final_suspend() noexcept {
@@ -97,7 +98,7 @@ struct task_promise<void, nothrow> final: task_promise_base<void, nothrow> {
  * @warning do NOT discard this object when returned by some function, or UB WILL happen
  */
 template <typename T = void, bool nothrow = false>
-struct task final: cancelable {
+struct task final {
     using promise_type = task_promise<T, nothrow>;
     using handle_t = std::experimental::coroutine_handle<promise_type>;
 
@@ -111,12 +112,10 @@ struct task final: cancelable {
 
     template <typename T_, bool nothrow_>
     void await_suspend(std::experimental::coroutine_handle<task_promise<T_, nothrow_>> caller) noexcept {
-        on_suspend(&caller.promise().callee_);
         coro_.promise().waiter_ = caller;
     }
 
     T await_resume() const {
-        on_resume();
         return get_result();
     }
 
@@ -160,15 +159,6 @@ struct task final: cancelable {
         } else {
             coro_.destroy();
         }
-    }
-
-    /** Attempt to cancel the operation bound in this task
-     * @note task itself doesn't support cancellation, the request is forwarded to inner promise.
-     * @return true if cancelation is supported; false otherwise
-     */
-    bool cancel() override {
-        assert(coro_.promise().callee_);
-        return coro_.promise().callee_->cancel();
     }
 
 private:

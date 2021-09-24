@@ -61,14 +61,4 @@ if (PROJECT_IS_TOP_LEVEL)
     note("${PROJECT_NAME} is top level. Building demo projects")
     # Target all the source files in demo
     add_source_dir("demo" ${libname})
-
-    target_sources(
-        file_server
-        PRIVATE
-        "demo/demo-sources/mime_dicts.cpp")
-
-    target_include_directories(
-        file_server
-        PRIVATE
-        "demo/demo-includes")
 endif()

@@ -27,6 +27,7 @@ task<> accept_connection(io_service& service, int serverfd) {
 #if USE_SPLICE
             int pipefds[2];
             pipe(pipefds) | panic_on_err("pipe", true);
+            on_scope_exit([&] { close(pipefds[0]); close(pipefds[1]); });
 #else
             std::vector<char> buf(BUF_SIZE);
 #endif
@@ -40,17 +41,13 @@ task<> accept_connection(io_service& service, int serverfd) {
 #endif
 #if USE_SPLICE
 #   if USE_LINK
-                auto tresult = service.splice(clientfd, -1, pipefds[1], -1, -1, SPLICE_F_MOVE, IOSQE_IO_LINK);
-                int r = co_await service.splice(pipefds[0], -1, clientfd, -1, -1, SPLICE_F_MOVE);
-                if (r <= 0) {
-                    auto r1 = tresult.get_result();
-                    if (r1 <= 0) break;
-                    co_await service.splice(pipefds[0], -1, clientfd, -1, r1, SPLICE_F_MOVE);
-                }
+                auto tresult = service.splice(clientfd, -1, pipefds[1], -1, -1, SPLICE_F_MOVE, IOSQE_IO_HARDLINK);
+                int r = co_await service.splice(pipefds[0], -1, clientfd, -1, -1, SPLICE_F_MOVE | SPLICE_F_NONBLOCK);
+                if (r <= 0) break;
 #   else
                 int r = co_await service.splice(clientfd, -1, pipefds[1], -1, -1, SPLICE_F_MOVE);
                 if (r <= 0) break;
-                co_await service.splice(pipefds[0], -1, clientfd, -1, -1, SPLICE_F_MOVE);
+                co_await service.splice(pipefds[0], -1, clientfd, -1, r, SPLICE_F_MOVE);
 #   endif
 #else
 #   if USE_LINK

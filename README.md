@@ -95,10 +95,6 @@ An awaitable class. It's different from task that it can't used for return type,
 
 Its design is highly inspired by [Promise of JavaScript](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise)
 
-### when.hpp
-
-Provide helper functions that working with an array of tasks
-
 ### io_service.hpp
 
 Main [liburing](https://github.com/axboe/liburing) binding. Also provides some helper functions for working with posix interfaces easier.

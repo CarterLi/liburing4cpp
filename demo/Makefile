@@ -1,13 +1,13 @@
-CXX_COMPILER ?= clang-10
+CXX_COMPILER ?= clang++
 MODE ?= DEBUG
 
 ifeq ($(MODE),DEBUG)
 	CXXFLAGS ?= -O0 -rdynamic -D_LIBCPP_DEBUG_LEVEL=1 -fno-omit-frame-pointer -fsanitize=address
 else
-	CXXFLAGS ?= -O3 -DNDEBUG -march=native -mtune=intel
+	CXXFLAGS ?= -O3 -DNDEBUG -march=native
 endif
 
-ifeq ($(CXX_COMPILER),clang-10)
+ifeq ($(CXX_COMPILER),clang++)
 	override CXXFLAGS += -fcoroutines-ts -stdlib=libc++ -lc++ -lc++abi
 else
 	override CXXFLAGS += -fcoroutines
@@ -23,25 +23,25 @@ clean:
 	rm -f $(all_targets)
 
 help:
-	@echo 'make [MODE={DEBUG,RELEASE}] [CXX_COMPILER={gcc|clang++}]'
+	@echo 'make [MODE={DEBUG,RELEASE}] [CXX_COMPILER={g++|clang++}]'
 
-file_server: file_server.cpp mime_dicts.cpp ../task.hpp ../io_service.hpp ../promise.hpp ../when.hpp ../cancelable.hpp
-	$(CXX_COMPILER) ./file_server.cpp ./mime_dicts.cpp -o file_server $(CXXFLAGS)
+file_server: file_server.cpp ../include/task.hpp ../include/io_service.hpp
+	$(CXX_COMPILER) ./file_server.cpp -I../include -o file_server $(CXXFLAGS)
 
-http_client: http_client.cpp ../task.hpp ../io_service.hpp ../promise.hpp ../when.hpp ../cancelable.hpp
-	$(CXX_COMPILER) ./http_client.cpp -o http_client $(CXXFLAGS)
+http_client: http_client.cpp ../include/task.hpp ../include/io_service.hpp
+	$(CXX_COMPILER) ./http_client.cpp -I../include -o http_client $(CXXFLAGS)
 
-link_cp: link_cp.cpp ../task.hpp ../io_service.hpp ../promise.hpp ../when.hpp ../cancelable.hpp
-	$(CXX_COMPILER) ./link_cp.cpp -o link_cp $(CXXFLAGS)
+link_cp: link_cp.cpp ../include/task.hpp ../include/io_service.hpp
+	$(CXX_COMPILER) ./link_cp.cpp -I../include -o link_cp $(CXXFLAGS)
 
-threading: threading.cpp ../task.hpp ../io_service.hpp ../promise.hpp ../cancelable.hpp
-	$(CXX_COMPILER) ./threading.cpp -o threading $(CXXFLAGS)
+threading: threading.cpp ../include/task.hpp ../include/io_service.hpp
+	$(CXX_COMPILER) ./threading.cpp -I../include -o threading $(CXXFLAGS)
 
-test: test.cpp ../task.hpp ../io_service.hpp ../promise.hpp ../when.hpp ../cancelable.hpp
-	$(CXX_COMPILER) ./test.cpp -o test $(CXXFLAGS)
+test: test.cpp ../include/task.hpp ../include/io_service.hpp
+	$(CXX_COMPILER) ./test.cpp -I../include -o test $(CXXFLAGS)
 
-bench: bench.cpp ../task.hpp ../io_service.hpp ../promise.hpp ../cancelable.hpp
-	$(CXX_COMPILER) ./bench.cpp -o bench $(CXXFLAGS)
+bench: bench.cpp ../include/task.hpp ../include/io_service.hpp
+	$(CXX_COMPILER) ./bench.cpp -I../include -o bench $(CXXFLAGS)
 
-echo_server: echo_server.cpp ../task.hpp ../io_service.hpp ../promise.hpp ../cancelable.hpp
-	$(CXX_COMPILER) ./echo_server.cpp -o echo_server $(CXXFLAGS)
+echo_server: echo_server.cpp ../include/task.hpp ../include/io_service.hpp
+	$(CXX_COMPILER) ./echo_server.cpp -I../include -o echo_server $(CXXFLAGS)

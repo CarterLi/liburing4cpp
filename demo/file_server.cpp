@@ -12,8 +12,6 @@
 #include <fmt/chrono.h>
 
 #include "io_service.hpp"
-#include "mime_dicts.hpp"
-#include "when.hpp"
 
 enum {
     SERVER_PORT = 8080,
@@ -48,9 +46,10 @@ task<> http_send_file(io_service& service, std::string filename, int clientfd, i
     } else {
         auto contentType = [filename_view = std::string_view(filename)]() {
             auto extension = filename_view.substr(filename_view.find_last_of('.') + 1);
-            auto iter = MimeDicts.find(extension);
-            if (iter == MimeDicts.end()) return "application/octet-stream"sv;
-            return iter->second;
+            if (extension == "txt"sv || extension == "c"sv || extension == "cpp"sv || extension == "h"sv || extension == "hpp"sv) {
+                return "text/plain"sv;
+            }
+            return "application/octet-stream"sv;
         }();
 
         auto header = fmt::format("HTTP/1.1 200 OK\r\nContent-type: {}\r\nContent-Length: {}\r\n\r\n", contentType, st.st_size);
@@ -59,17 +58,14 @@ task<> http_send_file(io_service& service, std::string filename, int clientfd, i
         off_t offset = 0;
         std::array<char, BUF_SIZE> filebuf;
         for (; st.st_size - offset > BUF_SIZE; offset += BUF_SIZE) {
-            co_await when_all(std::array {
-                service.read(infd, filebuf.data(), filebuf.size(), offset, IOSQE_IO_LINK) | panic_on_err("read" , false),
-                service.send(clientfd, filebuf.data(), filebuf.size(), MSG_NOSIGNAL | MSG_MORE) | panic_on_err("send", false),
-            });
-            co_await service.timeout(100ms) | panic_on_err("timeout" , false); // For debugging
+            auto t = service.read(infd, filebuf.data(), filebuf.size(), offset, IOSQE_IO_LINK) | panic_on_err("read" , false);
+            co_await service.send(clientfd, filebuf.data(), filebuf.size(), MSG_NOSIGNAL | MSG_MORE) | panic_on_err("send", false);
+            auto ts = dur2ts(100ms);
+            co_await service.timeout(&ts) | panic_on_err("timeout" , false); // For debugging
         }
         if (st.st_size > offset) {
-            co_await when_all(std::array {
-                service.read(infd, filebuf.data(), st.st_size - offset, offset, IOSQE_IO_LINK) | panic_on_err("read", false),
-                service.send(clientfd, filebuf.data(), st.st_size - offset, MSG_NOSIGNAL) | panic_on_err("send", false),
-            });
+            auto t = service.read(infd, filebuf.data(), st.st_size - offset, offset, IOSQE_IO_LINK) | panic_on_err("read", false);
+            co_await service.send(clientfd, filebuf.data(), st.st_size - offset, MSG_NOSIGNAL) | panic_on_err("send", false);
         }
     }
 }

@@ -7,7 +7,6 @@
 #include <fmt/format.h>
 
 #include "io_service.hpp"
-#include "when.hpp"
 
 template <typename Fn>
 task<std::invoke_result_t<Fn>> invoke(io_service& service, Fn&& fn) noexcept(noexcept(fn())) {
@@ -94,10 +93,8 @@ int main() {
             std::this_thread::sleep_for(1s);
             eventfd_write(efd, 123);
         });
-        co_await when_all(std::array {
-            service.read(efd, &v1, sizeof(v1), 0),
-            service.read(efd, &v2, sizeof(v2), 0),
-        });
+        [[maybe_unused]] auto read1 = service.read(efd, &v1, sizeof(v1), 0);
+        co_await service.read(efd, &v2, sizeof(v2), 0);
         fmt::print("{},{}\n", v1, v2);
     }());
 }
