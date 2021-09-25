@@ -28,13 +28,17 @@ static constexpr const auto http_404_hdr = "HTTP/1.1 404 Not Found\r\nContent-Le
 int runningCoroutines = 0;
 
 // Serve response
-task<> http_send_file(io_service& service, std::string filename, int clientfd, int dirfd) {
+uio::task<> http_send_file(uio::io_service& service, std::string filename, int clientfd, int dirfd) {
+    using uio::on_scope_exit;
+    using uio::panic_on_err;
+    using uio::dur2ts;
+
     if (filename == "./") filename = "./index.html";
 
     const auto infd = co_await service.openat(dirfd, filename.c_str(), O_RDONLY, 0);
     if (infd < 0) {
         fmt::print("{}: file not found!\n", filename);
-        co_await service.send(clientfd, http_404_hdr.data(), http_404_hdr.size(), MSG_NOSIGNAL) | panic_on_err("send" , false);
+        co_await service.send(clientfd, http_404_hdr.data(), http_404_hdr.size(), MSG_NOSIGNAL) | uio::panic_on_err("send" , false);
         co_return;
     }
 
@@ -71,7 +75,9 @@ task<> http_send_file(io_service& service, std::string filename, int clientfd, i
 }
 
 // Parse HTTP request header
-task<> serve(io_service& service, int clientfd, int dirfd) {
+uio::task<> serve(uio::io_service& service, int clientfd, int dirfd) {
+    using uio::panic_on_err;
+
     fmt::print("Serving connection, sockfd {}; number of running coroutines: {}\n",
          clientfd, runningCoroutines);
 
@@ -92,7 +98,9 @@ task<> serve(io_service& service, int clientfd, int dirfd) {
     }
 }
 
-task<> accept_connection(io_service& service, int serverfd, int dirfd) {
+uio::task<> accept_connection(uio::io_service& service, int serverfd, int dirfd) {
+    using uio::task;
+
     while (int clientfd = co_await service.accept(serverfd, nullptr, nullptr)) {
         // Start worker coroutine to handle new requests
         [=, &service](int clientfd) -> task<> {
@@ -118,6 +126,11 @@ task<> accept_connection(io_service& service, int serverfd, int dirfd) {
 }
 
 int main(int argc, char* argv[]) {
+    using uio::panic_on_err;
+    using uio::on_scope_exit;
+    using uio::panic;
+    using uio::io_service;
+
     if (argc != 2) {
         fmt::print("Usage: {} <ROOT_DIR>\n", argv[0]);
         return 1;

@@ -11,7 +11,7 @@
 static off_t get_file_size(int fd) {
     struct stat st;
 
-    fstat(fd, &st) | panic_on_err("fstat", true);
+    fstat(fd, &st) | uio::panic_on_err("fstat", true);
 
     if (__builtin_expect(S_ISREG(st.st_mode), true)) {
         return st.st_size;
@@ -19,14 +19,18 @@ static off_t get_file_size(int fd) {
 
     if (S_ISBLK(st.st_mode)) {
         unsigned long long bytes;
-        ioctl(fd, BLKGETSIZE64, &bytes) | panic_on_err("ioctl", true);
+        ioctl(fd, BLKGETSIZE64, &bytes) | uio::panic_on_err("ioctl", true);
         return bytes;
     }
 
     throw std::runtime_error("Unsupported file type");
 }
 
-task<> copy_file(io_service& service, off_t insize) {
+uio::task<> copy_file(uio::io_service& service, off_t insize) {
+    using uio::on_scope_exit;
+    using uio::to_iov;
+    using uio::panic_on_err;
+
     std::vector<char> buf(BS, '\0');
     service.register_buffers({ to_iov(buf.data(), buf.size()) });
     on_scope_exit unreg_bufs([&]() { service.unregister_buffers(); });
@@ -44,6 +48,10 @@ task<> copy_file(io_service& service, off_t insize) {
 }
 
 int main(int argc, char *argv[]) {
+    using uio::panic_on_err;
+    using uio::on_scope_exit;
+    using uio::io_service;
+
     if (argc < 3) {
         printf("%s: infile outfile\n", argv[0]);
         return 1;

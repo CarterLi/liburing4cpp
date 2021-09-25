@@ -7,6 +7,7 @@
 
 #include <liburing/stdlib_coroutine.hpp>
 
+namespace uio {
 template <typename T, bool nothrow>
 struct task;
 
@@ -162,3 +163,5 @@ template <typename T, bool nothrow>
 task<T, nothrow> task_promise_base<T, nothrow>::get_return_object() {
     return task<T, nothrow>(static_cast<task_promise<T, nothrow> *>(this));
 }
+
+} // namespace uio

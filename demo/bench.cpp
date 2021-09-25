@@ -16,6 +16,9 @@ struct stopwatch {
 };
 
 int main() {
+    using uio::io_service;
+    using uio::task;
+
     io_service service;
     const auto iteration = 10000000;
 

@@ -24,6 +24,7 @@
 #   define printf_if_verbose(...) 0
 #endif
 
+namespace uio {
 class io_service {
 public:
     /** Init io_service / io_uring object
@@ -735,3 +736,5 @@ private:
     unsigned cqe_count = 0;
     bool probe_ops[IORING_OP_LAST] = {};
 };
+
+} // namespace uio

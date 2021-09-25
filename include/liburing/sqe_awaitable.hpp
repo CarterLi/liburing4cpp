@@ -8,6 +8,7 @@
 
 #include <liburing/stdlib_coroutine.hpp>
 
+namespace uio {
 struct resolver {
     virtual void resolve(int result) noexcept = 0;
 };
@@ -88,3 +89,5 @@ struct sqe_awaitable {
 private:
     io_uring_sqe* sqe;
 };
+
+} // namespace uio

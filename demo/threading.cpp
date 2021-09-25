@@ -9,17 +9,17 @@
 #include <liburing/io_service.hpp>
 
 template <typename Fn>
-task<std::invoke_result_t<Fn>> invoke(io_service& service, Fn&& fn) noexcept(noexcept(fn())) {
+uio::task<std::invoke_result_t<Fn>> invoke(uio::io_service& service, Fn&& fn) noexcept(noexcept(fn())) {
     using result_t = std::invoke_result_t<Fn>;
     int efd = ::eventfd(0, EFD_CLOEXEC);
-    on_scope_exit closefd([=]() { ::close(efd); });
+    uio::on_scope_exit closefd([=]() { ::close(efd); });
     std::variant<
         std::monostate,
         std::conditional_t<std::is_void_v<result_t>, std::monostate, result_t>,
         std::conditional_t<noexcept (fn()), std::monostate, std::exception_ptr>
     > result;
     std::thread([&]() {
-        on_scope_exit writefd([=]() { ::eventfd_write(efd, 1); });
+        uio::on_scope_exit writefd([=]() { ::eventfd_write(efd, 1); });
         try {
             if constexpr (std::is_void_v<result_t>) {
                 fn();
@@ -64,12 +64,12 @@ struct async_mutex {
 
     bool try_lock() {
         eventfd_t value = 0;
-        auto iov = to_iov(&value, sizeof(value));
+        auto iov = uio::to_iov(&value, sizeof(value));
         auto res = preadv2(efd, &iov, 1, 0, RWF_NOWAIT);
         return res > 0;
     }
 
-    task<> async_lock(io_service& service) {
+    uio::task<> async_lock(uio::io_service& service) {
         eventfd_t value = 0;
         [[maybe_unused]] int res = co_await service.read(efd, &value, sizeof(value), 0);
         assert(res > 0 && value == 1);
@@ -83,10 +83,10 @@ struct async_mutex {
 };
 
 int main() {
-    io_service service;
+    uio::io_service service;
     using namespace std::chrono_literals;
 
-    service.run([&] () -> task<> {
+    service.run([&] () -> uio::task<> {
         int efd = eventfd(0, EFD_CLOEXEC | EFD_SEMAPHORE);
         eventfd_t v1 = -1, v2 = -1;
         invoke(service, [=]() noexcept {
