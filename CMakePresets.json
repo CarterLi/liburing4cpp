@@ -1,0 +1,64 @@
+{
+    "version": 2,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 19,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "Release",
+            "displayName": "Configure Release",
+            "description": "Release Preset",
+            "binaryDir": "${sourceDir}/build",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "Debug",
+            "displayName": "Configure Debug",
+            "description": "Debug Preset",
+            "binaryDir": "${sourceDir}/build",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "Sanitize",
+            "displayName": "Configure for Address Sanitizer",
+            "description": "Configure for address sanitizer",
+            "binaryDir": "${sourceDir}/build",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "CMAKE_BUILD_TYPE": "Debug",
+                "ALWAYS_FETCH": "ON",
+                "CMAKE_CXX_FLAGS": "-stdlib=libc++ -fsanitize=address -fno-omit-frame-pointer -fsanitize-address-use-after-scope"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "Release",
+            "configurePreset": "Release",
+            "configuration": "Release",
+            "jobs": 8
+        },
+        {
+            "name": "Debug",
+            "configurePreset": "Debug",
+            "configuration": "Debug",
+            "jobs": 8
+        },
+        {
+            "name": "Sanitize",
+            "configurePreset": "Sanitize",
+            "configuration": "Debug",
+            "jobs": 8
+        }
+    ]
+}
