@@ -26,6 +26,30 @@ jobs:
               g++-11
             compiler-flags: ""
 
+          - name: clang-10-libstdc++
+            compiler: clang++-10
+            packages: >
+              g++-11
+              clang++-10
+            compiler-flags: "-stdlib=libstdc++"
+
+          - name: clang-10-libc++
+            compiler: clang++-10
+            packages: >
+              clang++-10
+              libc++-10-dev
+              libc++1-10
+              libc++abi1-10
+              libc++abi-10-dev
+            compiler-flags: "-stdlib=libc++"
+
+          - name: clang-12-libstdc++
+            compiler: clang++-12
+            packages: >
+              g++-11
+              clang++-12
+            compiler-flags: "-stdlib=libstdc++"
+
           - name: clang-12-libc++
             compiler: clang++-12
             packages: >
