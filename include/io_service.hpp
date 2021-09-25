@@ -16,6 +16,14 @@
 #include "task.hpp"
 #include "utils.hpp"
 
+#ifdef LIBURING_VERBOSE
+#   define puts_if_verbose(x) puts(x)
+#   define printf_if_verbose(...) printf(__VA_ARGS__)
+#else
+#   define puts_if_verbose(x) 0
+#   define printf_if_verbose(...) 0
+#endif
+
 class io_service {
 public:
     /** Init io_service / io_uring object
@@ -43,12 +51,12 @@ public:
     for (int i = 0; i < probe->ops_len; ++i) {\
         if (probe->ops[i].op == opcode && probe->ops[i].flags & IO_URING_OP_SUPPORTED) {\
                 probe_ops[i] = true;\
-                puts("\t" #opcode);\
+                puts_if_verbose("\t" #opcode);\
                 break;\
             }\
         }\
     } while (0)
-    puts("Supported io_uring opcodes by current kernel:");
+    puts_if_verbose("Supported io_uring opcodes by current kernel:");
     TEST_IORING_OP(IORING_OP_NOP);
     TEST_IORING_OP(IORING_OP_READV);
     TEST_IORING_OP(IORING_OP_WRITEV);
@@ -91,8 +99,8 @@ public:
     TEST_IORING_OP(IORING_OP_LINKAT);
 #undef TEST_IORING_OP
 
-#define TEST_IORING_FEATURE(feature) if (p.features & feature) puts("\t" #feature)
-    puts("Supported io_uring features by current kernel:");
+#define TEST_IORING_FEATURE(feature) if (p.features & feature) puts_if_verbose("\t" #feature)
+    puts_if_verbose("Supported io_uring features by current kernel:");
     TEST_IORING_FEATURE(IORING_FEAT_SINGLE_MMAP);
     TEST_IORING_FEATURE(IORING_FEAT_NODROP);
     TEST_IORING_FEATURE(IORING_FEAT_SUBMIT_STABLE);
@@ -631,9 +639,7 @@ public:
         if (__builtin_expect(!!sqe, true)) {
             return sqe;
         } else {
-#ifndef NDEBUG
-            printf(__FILE__ ": SQ is full, flushing %u cqe(s)\n", cqe_count);
-#endif
+            printf_if_verbose(__FILE__ ": SQ is full, flushing %u cqe(s)\n", cqe_count);
             io_uring_cq_advance(&ring, cqe_count);
             cqe_count = 0;
             io_uring_submit(&ring);
@@ -662,9 +668,8 @@ public:
                 if (coro) coro->resolve(cqe->res);
             }
 
-#ifndef NDEBUG
-            printf(__FILE__ ": Found %u cqe(s), looping...\n", cqe_count);
-#endif
+            printf_if_verbose(__FILE__ ": Found %u cqe(s), looping...\n", cqe_count);
+
             io_uring_cq_advance(&ring, cqe_count);
             cqe_count = 0;
         }
