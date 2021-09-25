@@ -4,6 +4,7 @@
 #include <string_view>
 #include <time.h>
 
+namespace uio {
 /** Fill an iovec struct using buf & size */
 constexpr inline iovec to_iov(void *buf, size_t size) noexcept {
     return { buf, size };
@@ -83,3 +84,5 @@ inline task<int> operator |(task<int, nothrow> tret, panic_on_err&& poe) {
 inline task<int> operator |(sqe_awaitable tret, panic_on_err&& poe) {
     co_return (co_await tret) | std::move(poe);
 }
+
+} // namespace uio

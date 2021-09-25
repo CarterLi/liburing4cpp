@@ -4,6 +4,11 @@
 #include <liburing/io_service.hpp>
 
 int main() {
+    using uio::io_service;
+    using uio::task;
+    using uio::panic_on_err;
+    using uio::dur2ts;
+
     io_service service;
 
     service.run([] (io_service& service) -> task<> {

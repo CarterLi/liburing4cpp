@@ -19,7 +19,7 @@ enum {
 
 int runningCoroutines = 0;
 
-task<> accept_connection(io_service& service, int serverfd) {
+uio::task<> accept_connection(uio::io_service& service, int serverfd) {
     while (int clientfd = co_await service.accept(serverfd, nullptr, nullptr)) {
         // [=, &service](int clientfd) -> task<> {
             fmt::print("sockfd {} is accepted; number of running coroutines: {}\n",
@@ -68,6 +68,11 @@ task<> accept_connection(io_service& service, int serverfd) {
 }
 
 int main(int argc, char *argv[]) {
+    using uio::io_service;
+    using uio::panic_on_err;
+    using uio::on_scope_exit;
+    using uio::panic;
+
     uint16_t server_port = 0;
     if (argc == 2) {
         server_port = (uint16_t)std::strtoul(argv[1], nullptr, 10);
