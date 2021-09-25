@@ -131,14 +131,64 @@ See also https://github.com/frevib/io_uring-echo-server#benchmarks for benchmark
 
 ## Build
 
-This library is header only. It provides some demos for testing
+This library is header only. It provides some demos, as well as some tests.
 
-1. Build [`liburing`](https://github.com/axboe/liburing) and install, the latest version required
-1. `sudo apt install clang libc++-dev libc++abi-dev`. Make sure clang version >= 9
-1. `git clone --recurse-submodules https://github.com/CarterLi/liburing4cpp.git`
-1. `cd liburing4cpp/demo && make`
+### Dependencies
 
-Note: When benchmarking, you may want to build it with optimization: `make MODE=RELEASE`.
+This library has to be linked against [`liburing`](https://github.com/axboe/liburing),
+and requires a recent version of GCC or Clang. For best results, please use GCC
+10.3 (or later), or Clang 10.0.0 (or later)
+
+**[Optional]** This library can be built with either `libc++` or `libstdc++`.
+If you want to use `libc++`, you can install it with
+```
+sudo apt install clang libc++-dev libc++abi-dev`
+```
+
+### Building Demos & Tests
+
+In order to build the demos, clone the repository and then run CMake in the
+project's root directory:
+```bash
+git clone https://github.com/CarterLi/liburing4cpp.git
+cd liburing4cpp
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+```
+Optionally, you may also use CMake Presets instead (requires CMake version 3.19 or above)
+```bash
+git clone https://github.com/CarterLi/liburing4cpp.git
+cd liburing4cpp
+cmake --preset=Release
+cmake --build --preset=Release
+```
+
+Binares are placed in the `build/` directory. You can then run tests via ctest:
+```bash
+ctest --test-dir build
+```
+
+## Using this library with CMake
+When using CMake, you can automatically include this library as a dependency of
+your project by using the FetchContent interface:
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(
+    liburing4cpp
+    GIT_REPOSITORY https://github.com/CarterLi/liburing4cpp.git
+    GIT_TAG        async
+)
+FetchContent_MakeAvailable(liburing4cpp)
+```
+Then, just use `target_link_libraries`, which will ensure that liburing4cpp/include
+is added to the list of includes for whatever target you're building.
+```cmake
+target_link_libraries(
+    <your target>
+    <PUBLIC|PRIVATE|INTERFACE>
+    liburing4cpp)
+```
 
 ## License
 
