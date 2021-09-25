@@ -12,9 +12,9 @@
 #   include <execinfo.h>
 #endif
 
-#include "sqe_awaitable.hpp"
-#include "task.hpp"
-#include "utils.hpp"
+#include <liburing/sqe_awaitable.hpp>
+#include <liburing/task.hpp>
+#include <liburing/utils.hpp>
 
 #ifdef LIBURING_VERBOSE
 #   define puts_if_verbose(x) puts(x)

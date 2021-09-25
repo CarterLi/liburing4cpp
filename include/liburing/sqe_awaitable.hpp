@@ -6,7 +6,7 @@
 #include <optional>
 #include <cassert>
 
-#include "stdlib_coroutine.hpp"
+#include <liburing/stdlib_coroutine.hpp>
 
 struct resolver {
     virtual void resolve(int result) noexcept = 0;
