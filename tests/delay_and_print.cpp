@@ -4,18 +4,22 @@
 #include <liburing/io_service.hpp>
 
 int main() {
-    using uio::io_service;
-    using uio::task;
-    using uio::panic_on_err;
     using uio::dur2ts;
+    using uio::io_service;
+    using uio::panic_on_err;
+    using uio::task;
 
     io_service service;
 
-    service.run([] (io_service& service) -> task<> {
-        auto delayAndPrint = [&] (int second, uint8_t iflags = 0) -> task<> {
+    service.run([](io_service& service) -> task<> {
+        auto delayAndPrint = [&](int second, uint8_t iflags = 0) -> task<> {
             auto ts = dur2ts(std::chrono::seconds(second));
-            co_await service.timeout(&ts, iflags) | panic_on_err("timeout", false);
-            fmt::print("{:%T}: delayed {}s\n", std::chrono::system_clock::now().time_since_epoch(), second);
+            co_await service.timeout(&ts, iflags)
+                | panic_on_err("timeout", false);
+            fmt::print(
+                "{:%T}: delayed {}s\n",
+                std::chrono::system_clock::now().time_since_epoch(),
+                second);
         };
 
         fmt::print("in sequence start\n");

@@ -28,29 +28,51 @@ static off_t get_file_size(int fd) {
 
 uio::task<> copy_file(uio::io_service& service, off_t insize) {
     using uio::on_scope_exit;
-    using uio::to_iov;
     using uio::panic_on_err;
+    using uio::to_iov;
 
     std::vector<char> buf(BS, '\0');
-    service.register_buffers({ to_iov(buf.data(), buf.size()) });
+    service.register_buffers({to_iov(buf.data(), buf.size())});
     on_scope_exit unreg_bufs([&]() { service.unregister_buffers(); });
 
     off_t offset = 0;
     for (; offset < insize - BS; offset += BS) {
-        service.read_fixed(0, buf.data(), buf.size(), offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK) | panic_on_err("read_fixed(1)", false);
-        service.write_fixed(1, buf.data(), buf.size(), offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK) | panic_on_err("write_fixed(1)", false);
+        service.read_fixed(
+            0,
+            buf.data(),
+            buf.size(),
+            offset,
+            0,
+            IOSQE_FIXED_FILE | IOSQE_IO_LINK)
+            | panic_on_err("read_fixed(1)", false);
+        service.write_fixed(
+            1,
+            buf.data(),
+            buf.size(),
+            offset,
+            0,
+            IOSQE_FIXED_FILE | IOSQE_IO_LINK)
+            | panic_on_err("write_fixed(1)", false);
     }
 
     int left = insize - offset;
-    service.read_fixed(0, buf.data(), left, offset, 0, IOSQE_FIXED_FILE | IOSQE_IO_LINK) | panic_on_err("read_fixed(2)", false);
-    service.write_fixed(1, buf.data(), left, offset, 0, IOSQE_FIXED_FILE) | panic_on_err("write_fixed(2)", false);
+    service.read_fixed(
+        0,
+        buf.data(),
+        left,
+        offset,
+        0,
+        IOSQE_FIXED_FILE | IOSQE_IO_LINK)
+        | panic_on_err("read_fixed(2)", false);
+    service.write_fixed(1, buf.data(), left, offset, 0, IOSQE_FIXED_FILE)
+        | panic_on_err("write_fixed(2)", false);
     co_await service.fsync(1, 0, IOSQE_FIXED_FILE);
 }
 
-int main(int argc, char *argv[]) {
-    using uio::panic_on_err;
-    using uio::on_scope_exit;
+int main(int argc, char* argv[]) {
     using uio::io_service;
+    using uio::on_scope_exit;
+    using uio::panic_on_err;
 
     if (argc < 3) {
         printf("%s: infile outfile\n", argv[0]);
@@ -65,7 +87,7 @@ int main(int argc, char *argv[]) {
 
     off_t insize = get_file_size(infd);
     io_service service;
-    service.register_files({ infd, outfd });
+    service.register_files({infd, outfd});
     on_scope_exit unreg_file([&]() { service.unregister_files(); });
 
     service.run(copy_file(service, insize));

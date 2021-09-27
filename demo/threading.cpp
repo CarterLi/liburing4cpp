@@ -9,15 +9,17 @@
 #include <liburing/io_service.hpp>
 
 template <typename Fn>
-uio::task<std::invoke_result_t<Fn>> invoke(uio::io_service& service, Fn&& fn) noexcept(noexcept(fn())) {
+uio::task<std::invoke_result_t<Fn>> invoke(
+    uio::io_service& service,
+    Fn&& fn) noexcept(noexcept(fn())) {
     using result_t = std::invoke_result_t<Fn>;
     int efd = ::eventfd(0, EFD_CLOEXEC);
     uio::on_scope_exit closefd([=]() { ::close(efd); });
     std::variant<
         std::monostate,
         std::conditional_t<std::is_void_v<result_t>, std::monostate, result_t>,
-        std::conditional_t<noexcept (fn()), std::monostate, std::exception_ptr>
-    > result;
+        std::conditional_t<noexcept(fn()), std::monostate, std::exception_ptr>>
+        result;
     std::thread([&]() {
         uio::on_scope_exit writefd([=]() { ::eventfd_write(efd, 1); });
         try {
@@ -29,7 +31,7 @@ uio::task<std::invoke_result_t<Fn>> invoke(uio::io_service& service, Fn&& fn) no
                 std::atomic_signal_fence(std::memory_order_release);
             }
         } catch (...) {
-            if constexpr (!noexcept (fn())) {
+            if constexpr (!noexcept(fn())) {
                 std::atomic_signal_fence(std::memory_order_acquire);
                 result.template emplace<2>(std::current_exception());
                 std::atomic_signal_fence(std::memory_order_release);
@@ -40,8 +42,9 @@ uio::task<std::invoke_result_t<Fn>> invoke(uio::io_service& service, Fn&& fn) no
     }).detach();
     co_await service.poll(efd, POLLIN);
 
-    if constexpr (!noexcept (fn())) {
-        if (result.index() == 2) std::rethrow_exception(std::get<2>(result));
+    if constexpr (!noexcept(fn())) {
+        if (result.index() == 2)
+            std::rethrow_exception(std::get<2>(result));
     }
 
     if constexpr (!std::is_void_v<result_t>) {
@@ -50,11 +53,14 @@ uio::task<std::invoke_result_t<Fn>> invoke(uio::io_service& service, Fn&& fn) no
 }
 
 struct async_mutex {
-    async_mutex(): efd(::eventfd(1, EFD_CLOEXEC)) {};
-    async_mutex(async_mutex&& other): efd(other.efd) {
+    async_mutex()
+      : efd(::eventfd(1, EFD_CLOEXEC)) {};
+    async_mutex(async_mutex&& other)
+      : efd(other.efd) {
         other.efd = 0;
     };
-    async_mutex(const async_mutex& other): efd(::dup(other.efd)) {};
+    async_mutex(const async_mutex& other)
+      : efd(::dup(other.efd)) {};
 
     void lock() {
         eventfd_t value = 0;
@@ -71,13 +77,12 @@ struct async_mutex {
 
     uio::task<> async_lock(uio::io_service& service) {
         eventfd_t value = 0;
-        [[maybe_unused]] int res = co_await service.read(efd, &value, sizeof(value), 0);
+        [[maybe_unused]] int res = co_await service
+                                       .read(efd, &value, sizeof(value), 0);
         assert(res > 0 && value == 1);
     }
 
-    void unlock() {
-        eventfd_write(efd, 1);
-    }
+    void unlock() { eventfd_write(efd, 1); }
 
     int efd;
 };
@@ -86,7 +91,7 @@ int main() {
     uio::io_service service;
     using namespace std::chrono_literals;
 
-    service.run([&] () -> uio::task<> {
+    service.run([&]() -> uio::task<> {
         int efd = eventfd(0, EFD_CLOEXEC | EFD_SEMAPHORE);
         eventfd_t v1 = -1, v2 = -1;
         invoke(service, [=]() noexcept {

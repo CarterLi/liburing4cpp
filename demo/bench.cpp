@@ -5,7 +5,8 @@
 #include <liburing/io_service.hpp>
 
 struct stopwatch {
-    stopwatch(std::string_view str_): str(str_) {}
+    stopwatch(std::string_view str_)
+      : str(str_) {}
     ~stopwatch() {
         fmt::print("{:<20}{:>12}\n", str, (clock::now() - start).count());
     }
@@ -22,7 +23,7 @@ int main() {
     io_service service;
     const auto iteration = 10000000;
 
-    service.run([] (io_service& service) -> task<> {
+    service.run([](io_service& service) -> task<> {
         {
             stopwatch sw("service.yield:");
             for (int i = 0; i < iteration; ++i) {
@@ -37,9 +38,9 @@ int main() {
                 io_uring_prep_nop(sqe);
                 io_uring_submit_and_wait(ring, 1);
 
-                io_uring_cqe *cqe;
+                io_uring_cqe* cqe;
                 io_uring_peek_cqe(ring, &cqe);
-                (void) cqe->res;
+                (void)cqe->res;
                 io_uring_cqe_seen(ring, cqe);
             }
         }
