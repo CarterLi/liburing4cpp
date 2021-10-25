@@ -1,3 +1,6 @@
 [submodule "cxx-yield"]
 	path = cxx-yield
 	url = https://github.com/CarterLi/Cxx-yield.git
+[submodule "win_ring/libwinring"]
+	path = win_ring/libwinring
+	url = git@github.com:CarterLi/libwinring.git

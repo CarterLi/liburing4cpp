@@ -8,7 +8,7 @@ ifeq ($(CXX),clang++)
 	override CXXFLAGS += -stdlib=libc++ -lc++ -lc++abi
 endif
 
-override CXXFLAGS += -lboost_context -lfmt -I.. -I../cxx-yield -D_GNU_SOURCE=1 -DUSE_FCONTEXT=1 -DSYSCALL_COUNT=1 -std=c++17 -flto -march=native -g
+override CXXFLAGS += -Wall -lboost_context -lfmt -I.. -I../cxx-yield -D_GNU_SOURCE=1 -DUSE_FCONTEXT=1 -DSYSCALL_COUNT=1 -std=c++17 -flto -march=native -g
 
 all_targets = bench io_uring poll-epoll poll-io_uring poll-aio
 

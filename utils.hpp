@@ -4,7 +4,7 @@
 #include <utility>
 #include <system_error>
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) && __has_include(<execinfo.h>)
 #   include <execinfo.h>
 #endif
 
@@ -20,10 +20,20 @@ private:
 
 [[noreturn]]
 void panic(std::string_view sv, int err = 0) noexcept {
-    if (err == 0) err = errno;
+    if (err == 0) {
+#ifdef _WIN32
+        err = GetLastError();
+#else
+        err = errno;
+#endif
+    }
+#ifdef _WIN32
+    std::fprintf(stderr, "LastError: %x\n", (unsigned)err);
+#else
     std::fprintf(stderr, "errno: %d\n", err);
+#endif
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) && __has_include(<execinfo.h>)
     // https://stackoverflow.com/questions/77005/how-to-automatically-generate-a-stacktrace-when-my-program-crashes
     void *array[32];
     size_t size;
@@ -37,9 +47,6 @@ void panic(std::string_view sv, int err = 0) noexcept {
     // __asm__("int $3");
 #endif
 
-    if (err == EPIPE) {
-        std::fprintf(stderr, "Error: %s\n", std::runtime_error("Broken pipe: client socket is closed").what());
-    }
-    std::fprintf(stderr, "Error: %s\n", std::system_error(err, std::generic_category(), sv.data()).what());
+    std::fprintf(stderr, "Error: %s\n", std::system_error(err, std::system_category(), sv.data()).what());
     std::terminate();
 }

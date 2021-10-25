@@ -104,7 +104,7 @@ public:
     }
 
     [[nodiscard]]
-    io_uring_sqe* io_uring_get_sqe_safe() noexcept {
+    io_uring_sqe* get_sqe_safe() noexcept {
         auto* sqe = io_uring_get_sqe(&ring);
         if (__builtin_expect(!!sqe, true)) {
             return sqe;

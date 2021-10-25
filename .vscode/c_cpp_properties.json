@@ -1,20 +1,32 @@
 {
-  "configurations": [
-      {
-          "name": "Linux",
-          "includePath": [
-              "${workspaceFolder}/**"
-          ],
-          "defines": [],
-          "compilerPath": "/usr/bin/clang++",
-          "cStandard": "c11",
-          "cppStandard": "c++20",
-          "intelliSenseMode": "clang-x64",
-          "compilerArgs": [
-              "-fcoroutines-ts",
-              "-stdlib=libc++"
-          ]
-      }
-  ],
-  "version": 4
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/win_ring/libwinring/include"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/clang++",
+            "cStandard": "c11",
+            "cppStandard": "c++20",
+            "intelliSenseMode": "clang-x64",
+            "compilerArgs": [
+                "-fcoroutines-ts",
+                "-stdlib=libc++"
+            ]
+        },
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "C:/vcpkg/installed/x64-windows/include"
+            ],
+            "defines": [],
+            "compilerPath": "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.30.30704/bin/Hostx64/x64/cl.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++20"
+        }
+    ],
+    "version": 4
 }
