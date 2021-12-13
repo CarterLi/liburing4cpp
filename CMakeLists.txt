@@ -3,6 +3,9 @@ cmake_minimum_required(VERSION 3.14)  # CMake version check
 project("liburing4cpp")
 set(libname "liburing4cpp")
 set(CMAKE_CXX_STANDARD 20)
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set(CMAKE_CXX_FLAGS "-fcoroutines")
+endif()
 add_library("${libname}" INTERFACE)
 
 #######################
