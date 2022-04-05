@@ -103,7 +103,7 @@ uio::task<> accept_connection(uio::io_service& service, int serverfd, int dirfd)
 
     while (int clientfd = co_await service.accept(serverfd, nullptr, nullptr)) {
         // Start worker coroutine to handle new requests
-        [=, &service](int clientfd) -> task<> {
+        [](uio::io_service& service, int dirfd, int clientfd) -> task<> {
             ++runningCoroutines;
             auto start = std::chrono::high_resolution_clock::now();
             try {
@@ -121,7 +121,7 @@ uio::task<> accept_connection(uio::io_service& service, int serverfd, int dirfd)
                 clientfd,
                 std::chrono::high_resolution_clock::now() - start);
             --runningCoroutines;
-        }(clientfd);
+        }(service, dirfd, clientfd);
     }
 }
 
