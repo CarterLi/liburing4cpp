@@ -49,11 +49,13 @@ int main() {
                 std::this_thread::yield();
             }
         }
+#if defined(__i386__) || defined(__x86_64__)
         {
             stopwatch sw("pause:");
             for (int i = 0; i < iteration; ++i) {
                 __builtin_ia32_pause();
             }
         }
+#endif
     }(service));
 }
