@@ -98,6 +98,7 @@ public:
     TEST_IORING_OP(IORING_OP_MKDIRAT);
     TEST_IORING_OP(IORING_OP_SYMLINKAT);
     TEST_IORING_OP(IORING_OP_LINKAT);
+    TEST_IORING_OP(IORING_OP_MSG_RING);
 #undef TEST_IORING_OP
 
 #define TEST_IORING_FEATURE(feature) if (p.features & feature) puts_if_verbose("\t" #feature)
@@ -113,6 +114,7 @@ public:
     TEST_IORING_FEATURE(IORING_FEAT_EXT_ARG);
     TEST_IORING_FEATURE(IORING_FEAT_NATIVE_WORKERS);
     TEST_IORING_FEATURE(IORING_FEAT_RSRC_TAGS);
+    TEST_IORING_FEATURE(IORING_FEAT_CQE_SKIP);
 #undef TEST_IORING_FEATURE
     }
 
@@ -145,6 +147,19 @@ public:
         return await_work(sqe, iflags);
     }
 
+    sqe_awaitable readv2(
+        int fd,
+        const iovec* iovecs,
+        unsigned nr_vecs,
+        off_t offset,
+        int flags,
+        uint8_t iflags = 0
+    ) noexcept {
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_readv2(sqe, fd, iovecs, nr_vecs, offset, flags);
+        return await_work(sqe, iflags);
+    }
+
     /** Write data into multiple buffers asynchronously
      * @see pwritev2(2)
      * @see io_uring_enter(2) IORING_OP_WRITEV
@@ -160,6 +175,19 @@ public:
     ) noexcept {
         auto* sqe = io_uring_get_sqe_safe();
         io_uring_prep_writev(sqe, fd, iovecs, nr_vecs, offset);
+        return await_work(sqe, iflags);
+    }
+
+    sqe_awaitable writev2(
+        int fd,
+        const iovec* iovecs,
+        unsigned nr_vecs,
+        off_t offset,
+        int flags,
+        uint8_t iflags = 0
+    ) noexcept {
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_writev2(sqe, fd, iovecs, nr_vecs, offset, flags);
         return await_work(sqe, iflags);
     }
 
@@ -617,6 +645,23 @@ public:
     ) {
         auto* sqe = io_uring_get_sqe_safe();
         io_uring_prep_unlinkat(sqe, dfd, path, flags);
+        return await_work(sqe, iflags);
+    }
+
+    /** Delete a name and possibly the file it refers to asynchronously
+     * @see io_uring_enter(2) IORING_OP_MSG_RING
+     * @param iflags IOSQE_* flags
+     * @return a task object for awaiting
+     */
+    sqe_awaitable msg_ring(
+        int fd,
+        unsigned len,
+        uint64_t data,
+        unsigned flags,
+        uint8_t iflags = 0
+    ) {
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_msg_ring(sqe, fd, len, data, flags);
         return await_work(sqe, iflags);
     }
 
