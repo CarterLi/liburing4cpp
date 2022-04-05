@@ -5,8 +5,7 @@
 #include <type_traits>
 #include <optional>
 #include <cassert>
-
-#include <liburing/stdlib_coroutine.hpp>
+#include <coroutine>
 
 namespace uio {
 struct resolver {

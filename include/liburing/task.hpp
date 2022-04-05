@@ -5,8 +5,7 @@
 #include <array>
 #include <cassert>
 #include <utility>
-
-#include <liburing/stdlib_coroutine.hpp>
+#include <coroutine>
 
 namespace uio {
 template <typename T, bool nothrow>
