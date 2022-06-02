@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [ gcc-11, clang-12-libc++ ]
+        name: [ gcc-11, clang-14-libc++ ]
 
         include:
           - name: gcc-11
@@ -26,43 +26,30 @@ jobs:
               g++-11
             compiler-flags: ""
 
-          - name: clang-10-libstdc++
-            compiler: clang++-10
+          - name: clang-14-libc++
+            compiler: clang++-14
             packages: >
-              g++-11
-              clang++-10
-            compiler-flags: "-stdlib=libstdc++"
-
-          - name: clang-10-libc++
-            compiler: clang++-10
-            packages: >
-              clang++-10
-              libc++-10-dev
-              libc++1-10
-              libc++abi1-10
-              libc++abi-10-dev
-            compiler-flags: "-stdlib=libc++"
-
-          - name: clang-12-libstdc++
-            compiler: clang++-12
-            packages: >
-              g++-11
-              clang++-12
-            compiler-flags: "-stdlib=libstdc++"
-
-          - name: clang-12-libc++
-            compiler: clang++-12
-            packages: >
-              clang++-12
-              libc++-12-dev
-              libc++1-12
-              libc++abi1-12
-              libc++abi-12-dev
+              clang++-14
+              libc++-14-dev
+              libc++1-14
+              libc++abi1-14
+              libc++abi-14-dev
             compiler-flags: "-stdlib=libc++"
 
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
+
+    - name: Install Compilers
+      run: |
+        if [[ "${{matrix.name}}" == "clang-14-libc++" ]]; then \
+          wget https://apt.llvm.org/llvm.sh -O /tmp/llvm.sh; \
+          sudo bash /tmp/llvm.sh 14; \
+          sudo apt-get install -y libc++-14-dev libc++abi-14-dev; \
+        else \
+          sudo apt-get update -y; \
+          sudo apt-get install -y g++-11; \
+        fi;
 
     # Package liburing-dev only exists in ubuntu 20.10 and later, so we have to
     # install it manually
@@ -74,10 +61,6 @@ jobs:
         ./configure
         make -j 8
         sudo make install
-
-    - name: Install Compilers
-      run: |
-        sudo apt-get install ${{ matrix.packages }}
 
     - name: Configure CMake
       working-directory: ${{ github.workspace }}
