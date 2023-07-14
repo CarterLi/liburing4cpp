@@ -153,7 +153,7 @@ int main(int argc, char* argv[]) {
     }; bind(sockfd, reinterpret_cast<sockaddr *>(&addr), sizeof (sockaddr_in))) panic("socket binding", errno);
 
     if (listen(sockfd, 128)) panic("listen", errno);
-    fmt::print("Listening: {}\n", SERVER_PORT);
+    fmt::print("Listening: {}\n", (uint16_t) SERVER_PORT);
 
     io_service service;
 
