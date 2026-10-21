@@ -15,7 +15,7 @@ endif
 
 override CXXFLAGS += -g -Wall -std=c++17 -I.. -lfmt -luring -pthread
 
-all_targets = file_server http_client link_cp threading test bench echo_server
+all_targets = file_server http_client link_cp threading test bench echo_server server_with_read_timeout
 
 all: $(all_targets)
 
@@ -45,3 +45,6 @@ bench: bench.cpp ../include/task.hpp ../include/io_service.hpp
 
 echo_server: echo_server.cpp ../include/task.hpp ../include/io_service.hpp
 	$(CXX_COMPILER) ./echo_server.cpp -I../include -o echo_server $(CXXFLAGS)
+
+server_with_read_timeout: server_with_read_timeout.cpp ../include/task.hpp ../include/io_service.hpp
+	$(CXX_COMPILER) ./server_with_read_timeout.cpp -I../include -o server_with_read_timeout $(CXXFLAGS)

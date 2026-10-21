@@ -201,6 +201,12 @@ public:
         return await_work(sqe, iflags);
     }
 
+    void link_timeout(__kernel_timespec* timeout) {
+        auto* sqe = io_uring_get_sqe_safe();
+        io_uring_prep_link_timeout(sqe, timeout, 0);
+        io_uring_sqe_set_data(sqe, new callback_resolver(+[](int) {}));
+    }
+
     /** Read from a file descriptor at a given offset asynchronously
      * @see pread(2)
      * @see io_uring_enter(2) IORING_OP_READ
